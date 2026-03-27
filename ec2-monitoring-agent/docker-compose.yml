@@ -1,8 +1,0 @@
-version: '3.8'
-services:
-  agent:
-    build: .
-    ports:
-      - "5000:5000"
-    env_file:
-      - .env
