@@ -72,7 +72,7 @@ def run_agent_cycle(app) -> dict:
             request_timeout=app.config.get('REQUEST_TIMEOUT', 10)
         )
 
-        model_id = app.config.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
+        model_id = app.config.get('BEDROCK_MODEL_ID', 'us.anthropic.claude-3-5-sonnet-20241022-v2:0')
         max_tokens = app.config.get('BEDROCK_MAX_TOKENS', 4096)
         region = app.config.get('AWS_REGION', 'us-east-1')
 
