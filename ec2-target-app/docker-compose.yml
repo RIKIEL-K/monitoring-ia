@@ -16,7 +16,7 @@ services:
   promtail:
     image: grafana/promtail:latest
     volumes:
-      - ./target-logs:/var/log/dummy
+      - ./target-logs:/var/log/app-logs:ro
       - ./promtail-config.yml:/etc/promtail/config.yml
     env_file:
       - .env
