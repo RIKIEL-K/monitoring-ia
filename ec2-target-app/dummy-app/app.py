@@ -44,13 +44,13 @@ def index():
 
 @app.route('/api/generate-error')
 def generate_error():
-    logger.error("DatabaseConnectionError: impossible de se connecter à la base de données (timeout). IP 10.0.0.5 injoignable.")
+    logger.error("DatabaseConnectionError: impossible de se connecter à la base de données (timeout). IP 10.X.X.X injoignable.")
     logger.error("Stacktrace: \n  File 'app.py', line 42, in connect_db\n  raise ConnectionTimeout('DB Down')")
     return jsonify({"status": "error_generated", "file": "dummy-app.log"}), 500
 
 @app.route('/api/login-failed')
 def login_failed():
-    logger.warning("AuthFailure: tentative de connexion échouée pour l'utilisateur admin@company.com")
+    logger.warning("AuthFailure: tentative de connexion échouée pour l'utilisateur user@example.com")
     return jsonify({"status": "warning_generated", "file": "dummy-app.log"}), 401
 
 @app.route('/api/payment-timeout')

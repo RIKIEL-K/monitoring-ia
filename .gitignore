@@ -1,0 +1,17 @@
+# Logs
+*.log
+ec2-target-app/target-logs/
+target-logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
