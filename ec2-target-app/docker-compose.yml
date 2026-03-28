@@ -16,7 +16,7 @@ services:
   promtail:
     image: grafana/promtail:latest
     volumes:
-      - ./target-logs:/var/log/dummy
+      - ./target-logs:/var/log/app-logs:ro
       - ./promtail-config.yml:/etc/promtail/config.yml
     command: -config.file=/etc/promtail/config.yml
     depends_on:

@@ -7,13 +7,21 @@ positions:
 
 clients:
   # IP OF YOUR OBSERVABILITY EC2
-  - url: http://54.164.70.49:3100/loki/api/v1/push
+  - url: http://3.92.226.150:3100/loki/api/v1/push
 
 scrape_configs:
-  - job_name: 'dummy_app_logs'
+  - job_name: 'system'
     static_configs:
       - targets:
           - localhost
         labels:
-          job: 'dummy_web_app'
-          __path__: /var/log/dummy/*.log
+          job: 'system_logs'
+          __path__: /var/log/*.log
+  - job_name: 'app'
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: 'app_logs'
+          __path__: /var/log/app-logs/*.log
+
