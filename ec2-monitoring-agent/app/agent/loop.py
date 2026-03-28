@@ -1,21 +1,24 @@
 """
-Agent Loop — Boucle autonome de l'agent IA utilisant Bedrock Converse API avec Tool Use.
+Agent Loop — Boucle autonome de l'agent IA utilisant Strands Agents + Amazon Bedrock.
 
-L'agent décide quels outils appeler et dans quel ordre pour investiguer le système.
-La boucle continue jusqu'à ce que le modèle retourne un diagnostic final (texte).
+Strands gère automatiquement :
+  - La boucle toolUse / toolResult
+  - La gestion des itérations
+  - Le parsing des appels d'outils
+
+On se concentre ici sur :
+  - La construction du rapport structuré (incident report)
+  - La persistance en mémoire de l'historique des incidents
 """
 import json
 import logging
 from datetime import datetime, timezone
 
-from app.agent.tools import TOOL_DEFINITIONS, execute_tool
-
 logger = logging.getLogger(__name__)
 
-# In-memory incident history (list of dicts)
+# In-memory incident history
 _incident_history = []
 
-# System prompt that defines the agent's behavior
 AGENT_SYSTEM_PROMPT = """You are an autonomous SRE (Site Reliability Engineer) agent monitoring servers in production.
 
 Your job is to proactively check the health of the system using the tools available to you.
@@ -43,131 +46,81 @@ IMPORTANT: Always base your diagnosis on REAL data from the tools. Never fabrica
 
 def run_agent_cycle(app) -> dict:
     """
-    Execute one full agent monitoring cycle.
-    
+    Execute one full agent monitoring cycle using Strands Agents.
+
     Args:
-        app: Flask application instance (needed for app context)
-    
+        app: Flask application instance (needed to read config)
+
     Returns:
         dict with the cycle result and agent's diagnosis
     """
-    with app.app_context():
-        from app.services.bedrock import converse_with_tools
+    from strands import Agent
+    from strands.models import BedrockModel
+    from app.agent.tools import (
+        configure_tools,
+        query_prometheus,
+        query_loki,
+        check_service_health,
+        get_system_overview,
+    )
 
-        max_iterations = app.config.get('AGENT_MAX_ITERATIONS', 10)
+    with app.app_context():
+        # Inject service URLs into tools (replaces current_app.config access)
+        configure_tools(
+            prometheus_url=app.config['PROMETHEUS_URL'],
+            loki_url=app.config['LOKI_URL'],
+            request_timeout=app.config.get('REQUEST_TIMEOUT', 10)
+        )
+
         model_id = app.config.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-haiku-20240307-v1:0')
+        max_tokens = app.config.get('BEDROCK_MAX_TOKENS', 1024)
+        region = app.config.get('AWS_REGION', 'us-east-1')
 
         cycle_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        logger.info(f"=== Agent Cycle {cycle_id} START ===")
+        logger.info(f"=== Agent Cycle {cycle_id} START (Strands + Bedrock: {model_id}) ===")
 
-        # Initial prompt for the agent
-        initial_message = (
-            "A routine monitoring check has been triggered. "
-            "Use your tools to verify the health of all monitored systems. "
-            "Investigate any anomalies you find."
+        # Configure Bedrock as the model provider
+        bedrock_model = BedrockModel(
+            model_id=model_id,
+            region_name=region,
+            max_tokens=max_tokens,
+            temperature=0.2,
         )
 
-        # Build the conversation with tool use loop
-        messages = [
-            {
-                "role": "user",
-                "content": [{"text": initial_message}]
-            }
-        ]
-
-        tool_calls_log = []
-
-        for iteration in range(max_iterations):
-            logger.info(f"--- Agent iteration {iteration + 1}/{max_iterations} ---")
-
-            # Call Bedrock Converse with tools
-            try:
-                response = converse_with_tools(
-                    model_id=model_id,
-                    system_prompt=AGENT_SYSTEM_PROMPT,
-                    messages=messages,
-                    tools=TOOL_DEFINITIONS
-                )
-            except Exception as e:
-                logger.error(f"Bedrock call failed at iteration {iteration + 1}: {e}")
-                result = _create_error_result(cycle_id, str(e), tool_calls_log)
-                _incident_history.append(result)
-                return result
-
-            # Extract the assistant's response
-            response_message = response.get("output", {}).get("message", {})
-            stop_reason = response.get("stopReason", "")
-            messages.append(response_message)
-
-            # Check if the model wants to use tools
-            tool_requests = [
-                block for block in response_message.get("content", [])
-                if "toolUse" in block
-            ]
-
-            if not tool_requests:
-                # No tool calls = final text response from the agent
-                text_content = ""
-                for block in response_message.get("content", []):
-                    if "text" in block:
-                        text_content += block["text"]
-
-                logger.info(f"Agent produced final response at iteration {iteration + 1}")
-                result = _process_final_response(cycle_id, text_content, tool_calls_log)
-                _incident_history.append(result)
-                logger.info(f"=== Agent Cycle {cycle_id} END — severity: {result.get('severity', 'unknown')} ===")
-                return result
-
-            # Execute each tool the agent requested
-            tool_results_content = []
-            for tool_request in tool_requests:
-                tool_use = tool_request["toolUse"]
-                tool_name = tool_use["name"]
-                tool_input = tool_use.get("input", {})
-                tool_use_id = tool_use["toolUseId"]
-
-                logger.info(f"Agent called tool: {tool_name}({json.dumps(tool_input, default=str)[:200]})")
-
-                # Execute the tool
-                tool_result = execute_tool(tool_name, tool_input)
-
-                tool_calls_log.append({
-                    "iteration": iteration + 1,
-                    "tool": tool_name,
-                    "input": tool_input,
-                    "result_summary": _summarize_result(tool_result)
-                })
-
-                # Format tool result for Bedrock
-                tool_results_content.append({
-                    "toolResult": {
-                        "toolUseId": tool_use_id,
-                        "content": [{"json": tool_result}]
-                    }
-                })
-
-            # Append tool results as the "user" role (Bedrock convention)
-            messages.append({
-                "role": "user",
-                "content": tool_results_content
-            })
-
-        # Max iterations reached
-        logger.warning(f"Agent cycle {cycle_id} reached max iterations ({max_iterations})")
-        result = _create_error_result(
-            cycle_id,
-            f"Max iterations ({max_iterations}) reached without final diagnosis",
-            tool_calls_log
+        # Build the Strands agent — tool loop is fully managed by Strands
+        agent = Agent(
+            model=bedrock_model,
+            system_prompt=AGENT_SYSTEM_PROMPT,
+            tools=[query_prometheus, query_loki, check_service_health, get_system_overview],
         )
+
+        try:
+            response = agent(
+                "A routine monitoring check has been triggered. "
+                "Use your tools to verify the health of all monitored systems. "
+                "Investigate any anomalies you find."
+            )
+
+            # response is a Strands AgentResult; its string representation is the final text
+            final_text = str(response)
+            logger.info(f"Agent Cycle {cycle_id} — final response received")
+
+            result = _process_final_response(cycle_id, final_text)
+
+        except Exception as e:
+            logger.error(f"Agent Cycle {cycle_id} failed: {e}")
+            result = _create_error_result(cycle_id, str(e))
+
         _incident_history.append(result)
+        logger.info(f"=== Agent Cycle {cycle_id} END — severity: {result.get('severity', 'unknown')} ===")
         return result
 
 
-def _process_final_response(cycle_id: str, text_response: str, tool_calls_log: list) -> dict:
+def _process_final_response(cycle_id: str, text_response: str) -> dict:
     """Parse the agent's final text response into a structured incident report."""
     try:
-        # Try to extract JSON from the response
         clean = text_response.strip()
+        # Remove markdown code fences if present
         if "```" in clean:
             lines = clean.split("\n")
             json_lines = []
@@ -194,12 +147,10 @@ def _process_final_response(cycle_id: str, text_response: str, tool_calls_log: l
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "severity": diagnosis.get("severity", "unknown"),
         "diagnosis": diagnosis,
-        "tool_calls": tool_calls_log,
-        "iterations": len(tool_calls_log)
     }
 
 
-def _create_error_result(cycle_id: str, error: str, tool_calls_log: list) -> dict:
+def _create_error_result(cycle_id: str, error: str) -> dict:
     """Create an error result when the agent cycle fails."""
     return {
         "cycle_id": cycle_id,
@@ -208,25 +159,9 @@ def _create_error_result(cycle_id: str, error: str, tool_calls_log: list) -> dic
         "diagnosis": {
             "analysis": f"Agent cycle failed: {error}",
             "cause": "Agent error",
-            "repair_command": ""
+            "repair_command": "",
         },
-        "tool_calls": tool_calls_log,
-        "iterations": len(tool_calls_log)
     }
-
-
-def _summarize_result(result: dict) -> str:
-    """Create a short summary of a tool result for logging."""
-    status = result.get("status", "unknown")
-    if "error" in result:
-        return f"error: {result['error'][:100]}"
-    if "log_count" in result:
-        return f"{status}: {result['log_count']} logs"
-    if "result_count" in result:
-        return f"{status}: {result['result_count']} results"
-    if "http_status" in result:
-        return f"{status}: HTTP {result['http_status']}"
-    return status
 
 
 def get_incident_history(limit: int = 50) -> list:

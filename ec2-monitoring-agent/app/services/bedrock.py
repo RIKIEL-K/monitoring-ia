@@ -1,3 +1,11 @@
+"""
+Bedrock Service — Client Amazon Bedrock pour le flow legacy (/alerts).
+
+NOTE: La boucle agentique principale utilise maintenant Strands Agents
+(voir app/agent/loop.py). Ce module gère seulement :
+  - Le health check Bedrock (GET /api/v1/status)
+  - Le flow legacy orchestrateur (POST /api/v1/alerts)
+"""
 import boto3
 import json
 import uuid
@@ -8,7 +16,7 @@ from flask import current_app
 
 logger = logging.getLogger(__name__)
 
-# Module-level client cache (reuse across requests — AWS best practice)
+# Module-level client cache (AWS best practice)
 _bedrock_runtime_client = None
 _bedrock_agent_client = None
 
@@ -21,10 +29,7 @@ def _get_runtime_client():
         max_attempts = current_app.config.get('BEDROCK_RETRY_MAX_ATTEMPTS', 3)
         retry_config = BotoConfig(
             region_name=region,
-            retries={
-                'max_attempts': max_attempts,
-                'mode': 'standard'  # Includes exponential backoff with jitter
-            }
+            retries={'max_attempts': max_attempts, 'mode': 'standard'}
         )
         _bedrock_runtime_client = boto3.client('bedrock-runtime', config=retry_config)
     return _bedrock_runtime_client
@@ -39,7 +44,6 @@ def _get_agent_client():
     return _bedrock_agent_client
 
 
-# System prompt séparé du contexte incident (meilleure structure pour le LLM)
 SYSTEM_PROMPT = """You are an expert SRE (Site Reliability Engineer) diagnosing server incidents.
 You analyze alerts, application logs, and system metrics to identify root causes and provide repair commands.
 Always respond in JSON format with exactly three keys:
@@ -53,8 +57,7 @@ def check_bedrock_connectivity() -> dict:
     """Health check: verify Bedrock is reachable."""
     try:
         client = _get_runtime_client()
-        # A lightweight call to test connectivity
-        client.meta.service_model
+        client.meta.service_model  # lightweight check
         return {"status": "ok", "message": "Bedrock client initialized"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -62,16 +65,17 @@ def check_bedrock_connectivity() -> dict:
 
 def generate_diagnosis(incident_context: dict) -> dict:
     """
-    Send the incident context to AWS Bedrock and return a structured diagnosis.
-    Uses the Converse API (recommended) or Bedrock Agent if configured.
+    Send an incident context to Bedrock and return a structured diagnosis.
+    Used by the legacy /alerts flow (orchestrator).
+    The main agent loop now uses Strands Agents instead.
     """
     agent_id = current_app.config.get('BEDROCK_AGENT_ID')
     agent_alias_id = current_app.config.get('BEDROCK_AGENT_ALIAS_ID')
 
-    user_message = f"""Analyze the following incident context and provide a diagnosis.
-
-Incident Context:
-{json.dumps(incident_context, indent=2, default=str)}"""
+    user_message = (
+        f"Analyze the following incident context and provide a diagnosis.\n\n"
+        f"Incident Context:\n{json.dumps(incident_context, indent=2, default=str)}"
+    )
 
     try:
         if agent_id and agent_alias_id:
@@ -82,78 +86,43 @@ Incident Context:
     except ClientError as e:
         error_code = e.response['Error']['Code']
         error_message = e.response['Error']['Message']
-
-        # Distinguish retryable vs permanent errors for logging
-        if error_code in ('ThrottlingException', 'ServiceUnavailableException',
-                          'InternalServerException', 'ModelTimeoutException'):
-            logger.warning(f"Bedrock transient error (retries exhausted): {error_code} - {error_message}")
-        elif error_code in ('ValidationException', 'AccessDeniedException'):
-            logger.error(f"Bedrock permanent error: {error_code} - {error_message}")
-        else:
-            logger.error(f"Bedrock unexpected error: {error_code} - {error_message}")
-
-        return {
-            "analysis": f"Bedrock API Error: {error_code}",
-            "cause": error_message,
-            "repair_command": ""
-        }
+        logger.error(f"Bedrock ClientError: {error_code} — {error_message}")
+        return {"analysis": f"Bedrock Error: {error_code}", "cause": error_message, "repair_command": ""}
 
     except Exception as e:
         logger.error(f"Bedrock invocation failed: {e}")
-        return {
-            "analysis": f"API Error: {str(e)}",
-            "cause": "Service Unavailable",
-            "repair_command": ""
-        }
+        return {"analysis": f"API Error: {str(e)}", "cause": "Service Unavailable", "repair_command": ""}
 
 
 def _invoke_converse_api(user_message: str) -> dict:
-    """
-    Invoke Bedrock using the Converse API (recommended, model-agnostic).
-    """
+    """Invoke Bedrock Converse API for a single-turn diagnosis (legacy flow)."""
     client = _get_runtime_client()
     model_id = current_app.config.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-haiku-20240307-v1:0')
     max_tokens = current_app.config.get('BEDROCK_MAX_TOKENS', 1024)
 
-    logger.info(f"Invoking Bedrock Converse API with model: {model_id}")
-
+    logger.info(f"Invoking Bedrock Converse (legacy) — model: {model_id}")
     response = client.converse(
         modelId=model_id,
         system=[{"text": SYSTEM_PROMPT}],
-        messages=[
-            {
-                "role": "user",
-                "content": [{"text": user_message}]
-            }
-        ],
-        inferenceConfig={
-            "maxTokens": max_tokens,
-            "temperature": 0.2  # Low temperature for deterministic diagnostic responses
-        }
+        messages=[{"role": "user", "content": [{"text": user_message}]}],
+        inferenceConfig={"maxTokens": max_tokens, "temperature": 0.2}
     )
 
-    # Extract text from Converse API response
     output_message = response.get('output', {}).get('message', {})
-    text_response = ""
-    for block in output_message.get('content', []):
-        if 'text' in block:
-            text_response += block['text']
+    text_response = "".join(
+        block['text'] for block in output_message.get('content', []) if 'text' in block
+    )
 
-    # Log token usage for cost monitoring
     usage = response.get('usage', {})
-    logger.info(f"Bedrock tokens — input: {usage.get('inputTokens', '?')}, output: {usage.get('outputTokens', '?')}")
-
+    logger.info(f"Bedrock tokens — in: {usage.get('inputTokens', '?')}, out: {usage.get('outputTokens', '?')}")
     return _parse_json_response(text_response)
 
 
 def _invoke_bedrock_agent(agent_id: str, agent_alias_id: str, user_message: str) -> dict:
-    """
-    Invoke a dedicated Bedrock Agent (bedrock-agent-runtime).
-    """
+    """Invoke a dedicated Bedrock Agent (legacy flow)."""
     client = _get_agent_client()
     session_id = str(uuid.uuid4())
-
-    logger.info(f"Invoking Bedrock Agent: {agent_id} (alias: {agent_alias_id})")
+    logger.info(f"Invoking Bedrock Agent: {agent_id}")
 
     response = client.invoke_agent(
         agentId=agent_id,
@@ -171,55 +140,16 @@ def _invoke_bedrock_agent(agent_id: str, agent_alias_id: str, user_message: str)
     return _parse_json_response(completion)
 
 
-def converse_with_tools(model_id: str, system_prompt: str, messages: list, tools: list) -> dict:
-    """
-    Invoke Bedrock Converse API with tool definitions.
-    Used by the agent loop — the model can request tool calls.
-
-    Args:
-        model_id: Bedrock model ID
-        system_prompt: System prompt defining agent behavior
-        messages: Conversation history (list of message dicts)
-        tools: List of tool definitions (toolSpec format)
-
-    Returns:
-        Raw Bedrock Converse response dict
-    """
-    client = _get_runtime_client()
-    max_tokens = current_app.config.get('BEDROCK_MAX_TOKENS', 1024)
-
-    logger.info(f"Converse with tools — model: {model_id}, messages: {len(messages)}, tools: {len(tools)}")
-
-    response = client.converse(
-        modelId=model_id,
-        system=[{"text": system_prompt}],
-        messages=messages,
-        toolConfig={"tools": tools},
-        inferenceConfig={
-            "maxTokens": max_tokens,
-            "temperature": 0.2
-        }
-    )
-
-    # Log token usage
-    usage = response.get('usage', {})
-    logger.info(f"Bedrock tokens — input: {usage.get('inputTokens', '?')}, output: {usage.get('outputTokens', '?')}")
-
-    return response
-
-
 def _parse_json_response(text_response: str) -> dict:
     """Parse the LLM text response into structured JSON."""
     try:
-        # Try to extract JSON from the response (LLM might wrap it in markdown)
         clean = text_response.strip()
         if clean.startswith("```"):
-            # Remove markdown code fences
             lines = clean.split("\n")
             clean = "\n".join(lines[1:-1])
         return json.loads(clean)
     except json.JSONDecodeError:
-        logger.warning("Failed to parse Bedrock JSON response, returning raw text")
+        logger.warning("Failed to parse Bedrock JSON response")
         return {
             "analysis": "Failed to parse AI JSON response.",
             "cause": "Unknown",
