@@ -97,7 +97,7 @@ def generate_diagnosis(incident_context: dict) -> dict:
 def _invoke_converse_api(user_message: str) -> dict:
     """Invoke Bedrock Converse API for a single-turn diagnosis (legacy flow)."""
     client = _get_runtime_client()
-    model_id = current_app.config.get('BEDROCK_MODEL_ID', 'us.anthropic.claude-3-5-sonnet-20241022-v2:0')
+    model_id = current_app.config.get('BEDROCK_MODEL_ID', 'us.anthropic.claude-opus-4-1-20250805-v1:0')
     max_tokens = current_app.config.get('BEDROCK_MAX_TOKENS', 4096)
 
     logger.info(f"Invoking Bedrock Converse (legacy) — model: {model_id}")
