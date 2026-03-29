@@ -12,6 +12,7 @@ On se concentre ici sur :
 """
 import json
 import logging
+import re
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -19,29 +20,34 @@ logger = logging.getLogger(__name__)
 # In-memory incident history
 _incident_history = []
 
-AGENT_SYSTEM_PROMPT = """You are an autonomous SRE (Site Reliability Engineer) agent monitoring servers in production.
+AGENT_SYSTEM_PROMPT_TEMPLATE = """You are an autonomous SRE (Site Reliability Engineer) agent monitoring servers in production.
 
 Your job is to proactively check the health of the system using the tools available to you.
 You MUST call tools to investigate — do NOT guess or assume anything.
 
+## Service URLs (use these exact URLs with check_service_health):
+- Prometheus: {prometheus_url}
+- Loki: {loki_url}
+- Target app: {target_app_url}
+
 ## Your investigation strategy:
 1. Start with get_system_overview to get a quick snapshot of CPU, memory, disk
 2. If any metric looks abnormal (high CPU, low memory, low disk), investigate further
-3. Check application health with check_service_health
+3. Check application health with check_service_health using the URLs above
 4. If you find issues, query logs with query_loki to find error details
 5. Use query_prometheus for specific metrics if needed
 
 ## Your response format:
-When you have gathered enough information, provide your final assessment as a JSON object:
-{
+Respond ONLY with a raw JSON object (no markdown, no explanation before or after):
+{{
     "severity": "ok" | "warning" | "critical",
     "analysis": "What is happening on the system",
     "cause": "Root cause if there is an issue, or 'System healthy' if everything is fine",
     "repair_command": "Bash command to fix the issue, or empty string if no action needed",
     "metrics_checked": ["list of metrics you verified"]
-}
+}}
 
-IMPORTANT: Always base your diagnosis on REAL data from the tools. Never fabricate data."""
+IMPORTANT: Your LAST message must be ONLY the JSON object above. No text before or after it. Never fabricate data."""
 
 
 def run_agent_cycle(app) -> dict:
@@ -65,10 +71,14 @@ def run_agent_cycle(app) -> dict:
     )
 
     with app.app_context():
+        prometheus_url = app.config['PROMETHEUS_URL']
+        loki_url = app.config['LOKI_URL']
+        target_app_url = app.config.get('TARGET_APP_URL', 'http://localhost:8080')
+
         # Inject service URLs into tools (replaces current_app.config access)
         configure_tools(
-            prometheus_url=app.config['PROMETHEUS_URL'],
-            loki_url=app.config['LOKI_URL'],
+            prometheus_url=prometheus_url,
+            loki_url=loki_url,
             request_timeout=app.config.get('REQUEST_TIMEOUT', 10)
         )
 
@@ -77,7 +87,14 @@ def run_agent_cycle(app) -> dict:
         region = app.config.get('AWS_REGION', 'us-east-1')
 
         cycle_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        logger.info(f"=== Agent Cycle {cycle_id} START (Strands + Bedrock: {model_id}) ===")
+        logger.info(f"=== Agent Cycle {cycle_id} START (Strands + Bedrock: {model_id}, max_tokens={max_tokens}) ===")
+
+        # Inject real service URLs into the system prompt so the LLM knows them
+        system_prompt = AGENT_SYSTEM_PROMPT_TEMPLATE.format(
+            prometheus_url=prometheus_url,
+            loki_url=loki_url,
+            target_app_url=target_app_url,
+        )
 
         # Configure Bedrock as the model provider
         bedrock_model = BedrockModel(
@@ -90,7 +107,7 @@ def run_agent_cycle(app) -> dict:
         # Build the Strands agent — tool loop is fully managed by Strands
         agent = Agent(
             model=bedrock_model,
-            system_prompt=AGENT_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             tools=[query_prometheus, query_loki, check_service_health, get_system_overview],
         )
 
@@ -117,24 +134,51 @@ def run_agent_cycle(app) -> dict:
 
 
 def _process_final_response(cycle_id: str, text_response: str) -> dict:
-    """Parse the agent's final text response into a structured incident report."""
-    try:
-        clean = text_response.strip()
-        # Remove markdown code fences if present
-        if "```" in clean:
-            lines = clean.split("\n")
-            json_lines = []
-            in_block = False
-            for line in lines:
-                if line.strip().startswith("```"):
-                    in_block = not in_block
-                    continue
-                if in_block:
-                    json_lines.append(line)
-            clean = "\n".join(json_lines)
+    """Parse the agent's final text response into a structured incident report.
 
-        diagnosis = json.loads(clean)
-    except json.JSONDecodeError:
+    Handles 3 formats:
+    1. Pure JSON string
+    2. JSON inside a ```json ... ``` code block
+    3. Free text followed by a JSON object (e.g. 'Here is my assessment: {...}')
+    """
+    diagnosis = None
+    clean = text_response.strip()
+
+    # Strategy 1: JSON inside a markdown code block
+    if "```" in clean:
+        lines = clean.split("\n")
+        json_lines = []
+        in_block = False
+        for line in lines:
+            if line.strip().startswith("```"):
+                in_block = not in_block
+                continue
+            if in_block:
+                json_lines.append(line)
+        candidate = "\n".join(json_lines).strip()
+        try:
+            diagnosis = json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 2: Pure JSON
+    if diagnosis is None:
+        try:
+            diagnosis = json.loads(clean)
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 3: Extract the first {...} block from mixed text (e.g. "Here is my assessment: {...}")
+    if diagnosis is None:
+        match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', clean, re.DOTALL)
+        if match:
+            try:
+                diagnosis = json.loads(match.group())
+            except json.JSONDecodeError:
+                pass
+
+    if diagnosis is None:
+        logger.warning(f"Cycle {cycle_id}: could not parse LLM response as JSON. Raw: {clean[:300]}")
         diagnosis = {
             "severity": "unknown",
             "analysis": text_response[:500],
