@@ -80,10 +80,11 @@ def query_loki(query: str, limit: int = 20) -> dict:
     """
     Execute a LogQL query against Loki to fetch recent application logs.
     Use this to search for errors, warnings, or specific patterns in logs.
-    The logs come from the dummy-app service.
-    Examples: '{job="dummy_web_app"} |= "error"',
-    '{job="dummy_web_app"} |= "timeout"',
-    '{job="dummy_web_app"} | json | level="error"'.
+    The application logs use job="app_logs" as the stream selector.
+    System logs use job="system_logs".
+    Examples: '{job="app_logs"} |= "error"',
+    '{job="app_logs"} |= "INFO"',
+    '{job="app_logs"} | logfmt | level="error"'.
     """
     logger.info(f"[tool] query_loki: {query} (limit={limit})")
     end_time = int(_time.time() * 1_000_000_000)
