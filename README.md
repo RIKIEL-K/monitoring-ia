@@ -296,25 +296,6 @@ Ce rapport est sauvegardé et accessible via `GET /api/v1/incidents`.
 
 ---
 
-## Prérequis AWS
-
-### IAM Role
-Attacher un IAM Role à l'EC2 de l'agent avec la policy : `AmazonBedrockFullAccess`
-
-### Security Groups
-| Source SG | Destination SG | Port | Protocole |
-|---|---|---|---|
-| SG Agent | SG Observabilité | 9090 | TCP (Prometheus) |
-| SG Agent | SG Observabilité | 3100 | TCP (Loki) |
-| SG Agent | Internet / VPC Endpoint | 443 | HTTPS (Bedrock) |
-| SG Target | SG Observabilité | 3100 | TCP (Promtail → Loki) |
-| SG Observabilité | SG Target | 9100 | TCP (Prometheus → Node Exporter) |
-
-### VPC
-Les 3 EC2 doivent être dans le **même VPC**. Utiliser les **IPs privées** pour la communication.
-
----
-
 ## Déploiement
 
 ### 1. EC2 Target App
