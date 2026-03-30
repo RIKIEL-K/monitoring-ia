@@ -1,6 +1,6 @@
-# 🤖 Monitoring IA — Agent Autonome de Monitoring Serveur
+#  Monitoring IA — Agent Autonome de Monitoring Serveur
 
-Un **agent IA autonome** qui monitore des serveurs sur AWS EC2 en utilisant **AWS Bedrock** (Claude) avec **Tool Use**.
+Un **agent IA autonome** qui monitore des serveurs sur AWS EC2 en utilisant **AWS Bedrock** (Claude) via le framework **Strands Agents**.
 
 > **Ce n'est pas un simple wrapper LLM** — l'agent **décide lui-même** quels outils utiliser et dans quel ordre pour investiguer le système.
 
@@ -12,25 +12,25 @@ Tout le système repose sur **3 instances EC2** qui communiquent dans le **même
 
 ```mermaid
 flowchart TB
-    subgraph VPC["☁️ AWS VPC"]
+    subgraph VPC[" AWS VPC"]
         subgraph EC2_1["EC2 #1 — Serveur Cible"]
-            APP["🌐 Flask App\n:8080"]
-            NE["📊 Node Exporter\n:9100"]
-            PT["📤 Promtail"]
+            APP[" Flask App\n:8080"]
+            NE["Node Exporter\n:9100"]
+            PT[" Promtail"]
             APP -->|"écrit"| LOGS["dummy-app.log"]
             PT -->|"lit"| LOGS
         end
         
         subgraph EC2_2["EC2 #2 — Observabilité"]
-            PROM["📈 Prometheus\n:9090"]
-            LOKI["📝 Loki\n:3100"]
+            PROM[" Prometheus\n:9090"]
+            LOKI["Loki\n:3100"]
         end
         
         subgraph EC2_3["EC2 #3 — Agent IA"]
-            API["🔌 Flask API\n:5000"]
-            SCHED["⏰ Scheduler"]
-            LOOP["🧠 Agent Loop"]
-            TOOLS["🔧 Tools"]
+            API[" Flask API\n:5000"]
+            SCHED["Scheduler"]
+            LOOP["Strands Agent"]
+            TOOLS["Tools (@tool)"]
         end
     end
     
@@ -39,7 +39,7 @@ flowchart TB
     TOOLS -->|"requête PromQL"| PROM
     TOOLS -->|"requête LogQL"| LOKI
     TOOLS -->|"HTTP health check"| APP
-    LOOP <-->|"Converse API\n(HTTPS :443)"| BEDROCK["☁️ AWS Bedrock\nClaude"]
+    LOOP <-->|"BedrockModel\n(HTTPS :443)"| BEDROCK["☁️ AWS Bedrock\nClaude"]
     
     style EC2_1 fill:#1a1a2e,stroke:#e94560,color:#fff
     style EC2_2 fill:#1a1a2e,stroke:#0f3460,color:#fff
@@ -51,7 +51,7 @@ flowchart TB
 |---|---|---|---|
 | **Serveur Cible** | Dummy App + Node Exporter + Promtail | [ec2-target-app](./ec2-target-app) | 8080, 9100 |
 | **Observabilité** | Prometheus + Loki | [ec2-observability](./ec2-observability) | 9090, 3100 |
-| **Agent IA** | Flask API + Agent Loop + Scheduler | [ec2-monitoring-agent](./ec2-monitoring-agent) | 5000 |
+| **Agent IA** | Flask API + Strands Agent + Scheduler | [ec2-monitoring-agent](./ec2-monitoring-agent) | 5000 |
 
 ---
 
@@ -70,12 +70,12 @@ flowchart LR
 
 **Problèmes** : le LLM reçoit des données qu'il n'a pas demandées, le code décide quoi collecter, pas d'investigation.
 
-#### ✅ Agent IA (notre système)
+#### ✅ Agent IA (notre système — Strands Agents)
 
 ```mermaid
 flowchart LR
     B1["Cycle déclenché"] --> B2["Agent DÉCIDE\nquoi investiguer"]
-    B2 --> B3["Appelle un outil"]
+    B2 --> B3["Appelle un @tool"]
     B3 --> B4["Reçoit les résultats"]
     B4 --> B2
     B2 -->|"assez d'info"| B5["Diagnostic final"]
@@ -88,7 +88,7 @@ flowchart LR
 | **Qui décide quoi investiguer ?** | Le code (hardcodé) | Le LLM (autonome) |
 | **Monitoring** | Réactif (attend une alerte) | Proactif (scheduler) |
 | **Outils** | Tout en bloc | Appelés à la demande |
-| **Investigation** | 1 appel LLM | Boucle multi-itérations |
+| **Investigation** | 1 appel LLM | Boucle multi-itérations (Strands) |
 | **Adaptabilité** | Requêtes fixes | S'adapte au contexte |
 | **Historique** | Aucun | Incidents sauvegardés |
 
@@ -100,16 +100,16 @@ Voici exactement ce qui se passe à chaque cycle de monitoring :
 
 ```mermaid
 sequenceDiagram
-    participant S as ⏰ Scheduler
-    participant L as 🧠 Agent Loop
-    participant B as ☁️ Bedrock Claude
-    participant T as 🔧 Tools
-    participant P as 📈 Prometheus
-    participant K as 📝 Loki
-    participant A as 🌐 Target App
+    participant S as  Scheduler
+    participant L as  Strands Agent
+    participant B as  Bedrock Claude
+    participant T as  @tool functions
+    participant P as  Prometheus
+    participant K as  Loki
+    participant A as  Target App
 
     S->>L: Déclenche un cycle
-    L->>B: Prompt: "Vérifie l'état du système"<br/>+ 4 tool definitions
+    L->>B: Prompt: "Vérifie l'état du système"<br/>+ tool definitions auto-générées par Strands
     
     Note over B: L'agent RÉFLÉCHIT:<br/>"Commençons par un overview"
     B->>L: toolUse: get_system_overview()
@@ -142,19 +142,63 @@ sequenceDiagram
 
 ---
 
-## 4. Le mécanisme Bedrock Tool Use
+## 4. Strands Agents + Bedrock
 
-Le cœur technique du système agent repose sur l'API **Converse** de Bedrock avec **toolConfig** :
+L'agent utilise le framework **[Strands Agents](https://github.com/strands-agents/sdk-python)** qui abstrait entièrement la boucle `toolUse / toolResult` avec Amazon Bedrock.
+
+### Définition des outils avec `@tool`
+
+Les outils sont de simples fonctions Python décorées avec `@tool`. Strands génère automatiquement le schéma JSON depuis les **type hints** et la **docstring** :
+
+```python
+from strands import tool
+
+@tool
+def query_prometheus(query: str) -> dict:
+    """
+    Execute a PromQL query against Prometheus to get system metrics.
+    Use this to check CPU usage, memory, disk, network...
+    """
+    # ... appel HTTP à Prometheus
+    return {"status": "success", "results": [...]}
+```
+
+### Construction de l'agent
+
+```python
+from strands import Agent
+from strands.models import BedrockModel
+
+bedrock_model = BedrockModel(
+    model_id="anthropic.claude-3-haiku-20240307-v1:0",
+    region_name="us-east-1",
+    max_tokens=1024,
+    temperature=0.2,
+)
+
+agent = Agent(
+    model=bedrock_model,
+    system_prompt=AGENT_SYSTEM_PROMPT,
+    tools=[query_prometheus, query_loki, check_service_health, get_system_overview],
+)
+
+# Strands gère automatiquement la boucle toolUse/toolResult
+response = agent("A routine monitoring check has been triggered...")
+```
+
+> Strands **lit les docstrings** de chaque `@tool` et les transmet à Claude comme descriptions d'outils. Claude **décide** quel outil appeler en fonction du contexte.
+
+### Flow technique
 
 ```mermaid
 flowchart TD
-    subgraph send["Ce qu'on ENVOIE à Bedrock"]
+    subgraph send["Ce qu'on ENVOIE via Strands/Bedrock"]
         M["messages[]\n(historique conversation)"]
-        TS["toolConfig.tools[]\n(4 tool definitions)"]
-        SYS["system[]\n(prompt SRE)"]
+        TS["tool definitions\n(auto-générées par @tool)"]
+        SYS["system_prompt\n(rôle SRE)"]
     end
     
-    subgraph bedrock["Bedrock Converse API"]
+    subgraph bedrock["Bedrock Converse API (géré par Strands)"]
         LLM["Claude réfléchit\net décide"]
     end
     
@@ -166,31 +210,9 @@ flowchart TD
     send --> bedrock
     bedrock --> response
     
-    R1 -->|"On exécute l'outil,\non renvoie le résultat"| send
+    R1 -->|"Strands exécute l'outil,\nrenvoie le résultat"| send
     R2 -->|"Fin de la boucle"| DONE["📋 Incident Report"]
 ```
-
-Chaque **tool definition** envoyée à Bedrock ressemble à ça :
-
-```json
-{
-  "toolSpec": {
-    "name": "query_prometheus",
-    "description": "Execute a PromQL query...",
-    "inputSchema": {
-      "json": {
-        "type": "object",
-        "properties": {
-          "query": {"type": "string"}
-        },
-        "required": ["query"]
-      }
-    }
-  }
-}
-```
-
-> Claude **lit les descriptions** et **décide** quel outil est pertinent pour sa tâche.
 
 ---
 
@@ -208,11 +230,11 @@ flowchart LR
         S2["Loki\n(logs indexés)"]
     end
     
-    subgraph agent["Agent IA"]
+    subgraph agent["Agent IA (Strands)"]
         direction TB
         A1["Scheduler\n(toutes les 5 min)"]
-        A2["Boucle Agent"]
-        A3["Tools"]
+        A2["Strands Agent"]
+        A3["@tool functions"]
         A4["Bedrock Claude"]
         A1 --> A2
         A2 <--> A4
@@ -250,8 +272,7 @@ L'application web essaie de se connecter à la DB mais elle est down. Des logs d
 - **Prometheus** scrape node-exporter → détecte que le CPU est à 95%
 
 ### Étape 3 — L'agent se déclenche
-Le **scheduler** (toutes les 5 min) déclenche un cycle. L'agent envoie à Bedrock :
-> *"Vérifie l'état du système"* + les 4 tool definitions
+Le **scheduler** (toutes les 5 min) déclenche un cycle. Strands Agent envoie à Bedrock le prompt + les tool definitions auto-générées.
 
 ### Étape 4 — L'agent investigue lui-même
 Claude **décide** la séquence d'investigation :
@@ -323,7 +344,7 @@ docker-compose up -d --build
 
 ### Contrôle
 ```bash
-# Vérifier la connectivité
+# Vérifier la connectivité (Prometheus, Loki, Bedrock)
 curl http://<IP_AGENT>:5000/api/v1/status
 
 # Démarrer le monitoring proactif
@@ -334,6 +355,9 @@ curl -X POST http://<IP_AGENT>:5000/api/v1/agent/stop
 
 # Forcer un cycle immédiat
 curl -X POST http://<IP_AGENT>:5000/api/v1/agent/run-now
+
+# Statut du scheduler (interval, prochaine exécution)
+curl http://<IP_AGENT>:5000/api/v1/agent/status
 ```
 
 ### Incidents
@@ -349,47 +373,13 @@ curl -X POST http://<IP_AGENT>:5000/api/v1/incidents/clear
 
 ## Outils de l'Agent
 
-L'agent dispose de 4 outils qu'il peut appeler **à sa discrétion** :
+L'agent dispose de 4 outils décorés `@tool` qu'il peut appeler **à sa discrétion** :
 
 | Outil | Description |
 |---|---|
 | `query_prometheus` | Exécute une requête PromQL (CPU, RAM, disk...) |
-| `query_loki` | Recherche dans les logs applicatifs (erreurs, warnings...) |
-| `check_service_health` | Vérifie si un endpoint HTTP répond |
-| `get_system_overview` | Snapshot complet du système (CPU, RAM, disk, load) |
+| `query_loki` | Recherche dans les logs applicatifs (erreurs, warnings...) — 15 dernières minutes |
+| `check_service_health` | Vérifie si un endpoint HTTP répond (status code + latence) |
+| `get_system_overview` | Snapshot complet du système (CPU, RAM, disk, load avg 1m/5m) |
 
----
-
-## Structure du projet
-
-```
-monitoring-ia/
-├── ec2-target-app/           # Serveur à surveiller
-│   ├── docker-compose.yml
-│   ├── dummy-app/app.py      # App Flask qui génère des logs
-│   └── promtail-config.yml   # Push les logs vers Loki
-├── ec2-observability/        # Stack de collecte
-│   ├── docker-compose.yml
-│   ├── prometheus.yml        # Scrape les métriques
-│   └── loki-config.yml       # Stocke les logs
-└── ec2-monitoring-agent/     # Agent IA autonome
-    ├── docker-compose.yml
-    ├── Dockerfile
-    ├── .env.example
-    ├── requirements.txt
-    ├── run.py
-    └── app/
-        ├── __init__.py
-        ├── core/config.py
-        ├── agent/            # 🧠 Cœur de l'agent
-        │   ├── tools.py      # Définitions des outils
-        │   ├── loop.py       # Boucle autonome
-        │   └── scheduler.py  # Monitoring proactif
-        ├── services/
-        │   ├── bedrock.py    # Converse API + Tool Use
-        │   ├── prometheus.py
-        │   └── loki.py
-        └── api/
-            ├── routes.py     # Endpoints REST
-            └── error_handlers.py
-```
+> Les descriptions de ces outils orientent Claude dans le choix du bon outil. Strands génère automatiquement le schéma JSON depuis les **type hints** Python.
