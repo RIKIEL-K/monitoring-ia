@@ -6,8 +6,7 @@
 
 # Machine Learning
 scikit-learn==1.5.2
-prophet==1.1.4       # 1.1.5+ a un bug stan_backend — rester sur 1.1.4
-cmdstanpy>=1.2.4     # Moteur de calcul requis par Prophet
+prophet==1.1.4
 
 # Data Processing
 pandas==2.2.3
