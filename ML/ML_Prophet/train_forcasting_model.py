@@ -249,6 +249,13 @@ def train_prophet_model(df, metric_name, metric_config, metric_key):
 
         return model
 
+    except AttributeError as e:
+        if 'stan_backend' in str(e):
+            print(f"❌ Prophet stan_backend error — downgrade requis: pip install prophet==1.1.4")
+        else:
+            print(f"❌ Error training model for {metric_name}: {e}")
+        return None
+
     except Exception as e:
         print(f"❌ Error training model for {metric_name}: {e}")
         return None
