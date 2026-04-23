@@ -30,7 +30,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 # Configuration
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
-MODEL_PATH = os.getenv("MODEL_PATH", "/home/ec2-user/monitoring-ia/ML/models/anomaly_model.pkl")
+MODEL_PATH = os.getenv("MODEL_PATH", "/home/ubuntu/monitoring-ia/ML/models/anomaly_model.pkl")
 METRICS_QUERY = '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
 
 # Detection parameters

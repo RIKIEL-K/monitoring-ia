@@ -40,7 +40,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 # Configuration
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
-MODEL_DIR = os.getenv("MODEL_DIR", "/home/ec2-user/monitoring-ia/ML/models/prophet")
+MODEL_DIR = os.getenv("MODEL_DIR", "/home/ubuntu/monitoring-ia/ML/models/prophet")
 FORECAST_DAYS = int(os.getenv("FORECAST_DAYS", "7"))
 
 # Metrics configuration (must match train_forecasting_model.py)

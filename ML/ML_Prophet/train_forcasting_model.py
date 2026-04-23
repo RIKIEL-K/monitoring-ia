@@ -41,7 +41,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 # Configuration
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
-MODEL_DIR = os.getenv("MODEL_DIR", "/home/ec2-user/monitoring-ia/ML/models/prophet")
+MODEL_DIR = os.getenv("MODEL_DIR", "/home/ubuntu/monitoring-ia/ML/models/prophet")
 TRAINING_HOURS = 1  # Use last 1 hour of data for training (or all available data)
 MIN_DATA_POINTS = 20  # Minimum data points required for training (20 * 30s = 10 minutes)
 
