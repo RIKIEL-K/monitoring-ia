@@ -33,10 +33,15 @@ except ImportError as e:
     print("   pip install -r requirements.txt")
     sys.exit(1)
 
+from dotenv import load_dotenv
+
+# Load .env from the parent ML/ directory
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+
 
 # Configuration
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
-MODEL_DIR = os.getenv("MODEL_DIR", "/opt/ml/models/prophet")
+MODEL_DIR = os.getenv("MODEL_DIR", "/home/ec2-user/monitoring-ia/ML/models/prophet")
 TRAINING_HOURS = 1  # Use last 1 hour of data for training (or all available data)
 MIN_DATA_POINTS = 20  # Minimum data points required for training (20 * 30s = 10 minutes)
 
@@ -336,7 +341,7 @@ def main():
 
     if trained_models:
         print("\n✅ Models ready. Run forecast_metrics.py to generate predictions.")
-        print(f"   python3 /opt/ml/ML_Prophet/forecast_metrics.py")
+        print(f"   python3 ~/monitoring-ia/ML/ML_Prophet/forecast_metrics.py")
     else:
         print("\n❌ No models were trained successfully")
         print("   Please resolve the issues above and try again")

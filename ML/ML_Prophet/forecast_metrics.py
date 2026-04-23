@@ -32,10 +32,15 @@ except ImportError as e:
     print("   pip install -r requirements.txt")
     sys.exit(1)
 
+from dotenv import load_dotenv
+
+# Load .env from the parent ML/ directory
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+
 
 # Configuration
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
-MODEL_DIR = os.getenv("MODEL_DIR", "/opt/ml/models/prophet")
+MODEL_DIR = os.getenv("MODEL_DIR", "/home/ec2-user/monitoring-ia/ML/models/prophet")
 FORECAST_DAYS = int(os.getenv("FORECAST_DAYS", "7"))
 
 # Metrics configuration (must match train_forecasting_model.py)
@@ -342,7 +347,7 @@ def main():
     # Check if model directory exists
     if not os.path.exists(MODEL_DIR):
         print(f"❌ Model directory not found: {MODEL_DIR}")
-        print(f"   Run train_forcasting_model.py first: python3 /opt/ml/ML_Prophet/train_forcasting_model.py")
+        print(f"   Run train_forcasting_model.py first: python3 ~/monitoring-ia/ML/ML_Prophet/train_forcasting_model.py")
         sys.exit(1)
 
     # Load all available models
@@ -358,7 +363,7 @@ def main():
 
     if not models:
         print("\n❌ No trained models found!")
-        print(f"   Run: python3 /opt/ml/ML_Prophet/train_forcasting_model.py")
+        print(f"   Run: python3 ~/monitoring-ia/ML/ML_Prophet/train_forcasting_model.py")
         sys.exit(1)
 
     print(f"\n✅ Loaded {len(models)} model(s)\n")

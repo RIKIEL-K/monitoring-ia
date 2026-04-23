@@ -5,7 +5,7 @@ This script trains an IsolationForest model on CPU metrics from Prometheus.
 It learns what "normal" CPU behavior looks like and saves the model for later use.
 
 Usage:
-    python3 /opt/ml/train_model.py
+    python3 ~/monitoring-ia/ML/train_model.py
 """
 
 import os
@@ -19,12 +19,17 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 from prometheus_api_client import PrometheusConnect
 
+from dotenv import load_dotenv
+
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
 
+# Load .env from the ML/ directory
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
 # Configuration
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
-MODEL_PATH = os.getenv("MODEL_PATH", "/opt/ml/models/anomaly_model.pkl")
+MODEL_PATH = os.getenv("MODEL_PATH", "/home/ec2-user/monitoring-ia/ML/models/anomaly_model.pkl")
 METRICS_QUERY = '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
 
 # Training parameters

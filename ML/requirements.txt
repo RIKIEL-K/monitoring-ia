@@ -14,3 +14,6 @@ numpy==1.26.4
 
 # Prometheus API
 prometheus-api-client==0.5.5
+
+# Configuration (.env)
+python-dotenv==1.0.1
