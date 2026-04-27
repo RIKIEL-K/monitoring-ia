@@ -1,8 +1,9 @@
-# 🤖 Monitoring IA — Agent Autonome de Monitoring Serveur
+# 📊 Monitoring IA — AIOps avec Machine Learning
 
-Un **agent IA autonome** qui monitore des serveurs sur AWS EC2 en utilisant **AWS Bedrock** (Claude) avec **Tool Use**.
+Un système **AIOps** qui monitore des serveurs AWS EC2 en utilisant le **Machine Learning** pour détecter des anomalies et prédire les problèmes de capacité.
 
-> **Ce n'est pas un simple wrapper LLM** — l'agent **décide lui-même** quels outils utiliser et dans quel ordre pour investiguer le système.
+> **IsolationForest** détecte les anomalies CPU en temps réel.
+> **Prophet** prédit l'évolution des métriques sur 7 jours.
 
 ---
 
@@ -20,376 +21,260 @@ flowchart TB
             APP -->|"écrit"| LOGS["dummy-app.log"]
             PT -->|"lit"| LOGS
         end
-        
+
         subgraph EC2_2["EC2 #2 — Observabilité"]
             PROM["📈 Prometheus\n:9090"]
             LOKI["📝 Loki\n:3100"]
         end
-        
-        subgraph EC2_3["EC2 #3 — Agent IA"]
-            API["🔌 Flask API\n:5000"]
-            SCHED["⏰ Scheduler"]
-            LOOP["🧠 Agent Loop"]
-            TOOLS["🔧 Tools"]
+
+        subgraph EC2_3["EC2 #3 — Agent ML"]
+            IF["🔍 IsolationForest\n(anomalies)"]
+            PR["📈 Prophet\n(prédictions)"]
+            CRON["⏰ Cron"]
+            CRON --> IF
+            CRON --> PR
         end
     end
-    
+
     NE -->|"scrape :9100\n(métriques CPU/RAM/disk)"| PROM
     PT -->|"push :3100\n(logs applicatifs)"| LOKI
-    TOOLS -->|"requête PromQL"| PROM
-    TOOLS -->|"requête LogQL"| LOKI
-    TOOLS -->|"HTTP health check"| APP
-    LOOP <-->|"Converse API\n(HTTPS :443)"| BEDROCK["☁️ AWS Bedrock\nClaude"]
-    
+    IF -->|"query_range\n(PromQL)"| PROM
+    PR -->|"query_range\n(PromQL)"| PROM
+
     style EC2_1 fill:#1a1a2e,stroke:#e94560,color:#fff
     style EC2_2 fill:#1a1a2e,stroke:#0f3460,color:#fff
     style EC2_3 fill:#1a1a2e,stroke:#16c79a,color:#fff
-    style BEDROCK fill:#ff9f1c,stroke:#333,color:#000
 ```
 
 | EC2 | Composant | Dossier | Ports |
 |---|---|---|---|
 | **Serveur Cible** | Dummy App + Node Exporter + Promtail | [ec2-target-app](./ec2-target-app) | 8080, 9100 |
 | **Observabilité** | Prometheus + Loki | [ec2-observability](./ec2-observability) | 9090, 3100 |
-| **Agent IA** | Flask API + Agent Loop + Scheduler | [ec2-monitoring-agent](./ec2-monitoring-agent) | 5000 |
+| **Agent ML** | IsolationForest + Prophet (cron) | [ML](./ML) | — |
 
 ---
 
-## 2. Qu'est-ce qui rend ça "agent" ?
+## 2. Comment fonctionne le ML ?
 
-La différence entre un **wrapper LLM** et un **agent** :
+### IsolationForest — Détection d'anomalies
 
-#### ❌ Wrapper LLM (approche classique)
-
-```mermaid
-flowchart LR
-    A1["Alerte reçue"] --> A2["Code collecte\nTOUTES les données"]
-    A2 --> A3["Envoie tout\nen bloc au LLM"]
-    A3 --> A4["LLM répond"]
-```
-
-**Problèmes** : le LLM reçoit des données qu'il n'a pas demandées, le code décide quoi collecter, pas d'investigation.
-
-#### ✅ Agent IA (notre système)
+L'algorithme apprend ce qui est **"normal"** à partir de l'historique CPU, puis signale tout ce qui dévie.
 
 ```mermaid
 flowchart LR
-    B1["Cycle déclenché"] --> B2["Agent DÉCIDE\nquoi investiguer"]
-    B2 --> B3["Appelle un outil"]
-    B3 --> B4["Reçoit les résultats"]
-    B4 --> B2
-    B2 -->|"assez d'info"| B5["Diagnostic final"]
+    A["train_model.py\n(1x/jour à 3h)"] -->|"crée"| M["anomaly_model.pkl"]
+    M -->|"chargé par"| B["detect_anomalie.py\n(toutes les 5 min)"]
+    P["Prometheus"] -->|"CPU metrics"| A
+    P -->|"CPU metrics"| B
+    B -->|"log"| L["/var/log/ml/detect.log"]
 ```
 
-**L'agent** choisit les outils, pose ses propres questions, et investigue comme un vrai SRE humain.
+**Features utilisées** (5) :
+| Feature | Description |
+|---|---|
+| `cpu_usage` | % CPU actuel |
+| `rolling_mean` | Moyenne glissante (5 échantillons) |
+| `rolling_std` | Écart-type glissant (volatilité) |
+| `rate_of_change` | Variation entre 2 mesures |
+| `hour` | Heure du jour (saisonnalité) |
 
-| Caractéristique | Wrapper LLM | Agent IA ✅ |
+### Prophet — Prédiction de capacité
+
+Prophet apprend les tendances et prédit quand les seuils critiques seront atteints.
+
+```mermaid
+flowchart LR
+    A["train_forcasting_model.py\n(1x/jour à 4h)"] -->|"crée"| M["models/prophet/\n3 modèles .pkl"]
+    M -->|"chargés par"| B["forecast_metrics.py\n(toutes les 15 min)"]
+    P["Prometheus"] -->|"CPU, RAM, Disk"| A
+    P -->|"valeurs actuelles"| B
+    B -->|"log"| L["/var/log/ml/forecast.log"]
+```
+
+**Métriques prédites** :
+| Métrique | Query PromQL | Seuil d'alerte |
 |---|---|---|
-| **Qui décide quoi investiguer ?** | Le code (hardcodé) | Le LLM (autonome) |
-| **Monitoring** | Réactif (attend une alerte) | Proactif (scheduler) |
-| **Outils** | Tout en bloc | Appelés à la demande |
-| **Investigation** | 1 appel LLM | Boucle multi-itérations |
-| **Adaptabilité** | Requêtes fixes | S'adapte au contexte |
-| **Historique** | Aucun | Incidents sauvegardés |
+| CPU Usage (%) | `100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)` | > 80% |
+| Memory Available (GB) | `node_memory_MemAvailable_bytes / 1024 / 1024 / 1024` | < 3 GB |
+| Disk Usage (%) | `(1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100` | > 90% |
 
 ---
 
-## 3. La boucle agent en détail
+## 3. Fréquence d'exécution (cron)
 
-Voici exactement ce qui se passe à chaque cycle de monitoring :
-
-```mermaid
-sequenceDiagram
-    participant S as ⏰ Scheduler
-    participant L as 🧠 Agent Loop
-    participant B as ☁️ Bedrock Claude
-    participant T as 🔧 Tools
-    participant P as 📈 Prometheus
-    participant K as 📝 Loki
-    participant A as 🌐 Target App
-
-    S->>L: Déclenche un cycle
-    L->>B: Prompt: "Vérifie l'état du système"<br/>+ 4 tool definitions
-    
-    Note over B: L'agent RÉFLÉCHIT:<br/>"Commençons par un overview"
-    B->>L: toolUse: get_system_overview()
-    L->>T: Exécute get_system_overview
-    T->>P: PromQL: node_cpu, node_memory, etc.
-    P-->>T: Résultats métriques
-    T-->>L: {cpu: 92%, ram: 340MB free}
-    L->>B: toolResult: {cpu: 92%, ram: 340MB}
-    
-    Note over B: L'agent RÉFLÉCHIT:<br/>"CPU à 92% — c'est élevé,<br/>regardons les logs"
-    B->>L: toolUse: query_loki({query: "error"})
-    L->>T: Exécute query_loki
-    T->>K: LogQL query
-    K-->>T: 15 lignes de logs
-    T-->>L: {logs: ["DatabaseConnectionError..."]}
-    L->>B: toolResult: {15 error logs}
-    
-    Note over B: L'agent RÉFLÉCHIT:<br/>"Des erreurs DB,<br/>vérifions l'app"
-    B->>L: toolUse: check_service_health(/health)
-    L->>T: Exécute check_health
-    T->>A: GET /api/health
-    A-->>T: 200 OK (0.5s)
-    T-->>L: {status: healthy, 0.5s}
-    L->>B: toolResult: {healthy}
-    
-    Note over B: L'agent CONCLUT:<br/>"App OK mais DB errors<br/>+ CPU high → fuite mémoire"
-    B-->>L: Diagnostic JSON final
-    L->>L: Sauvegarde incident
-```
+| Script | Fréquence | Heure | Rôle |
+|---|---|---|---|
+| `train_model.py` | 1x/jour | 03:00 | Entraîne IsolationForest sur les dernières données |
+| `detect_anomalie.py` | toutes les 5 min | 24/7 | Détecte les anomalies CPU en temps réel |
+| `train_forcasting_model.py` | 1x/jour | 04:00 | Entraîne 3 modèles Prophet (CPU, RAM, Disk) |
+| `forecast_metrics.py` | toutes les 15 min | 24/7 | Génère les prédictions sur 7 jours |
 
 ---
 
-## 4. Le mécanisme Bedrock Tool Use
-
-Le cœur technique du système agent repose sur l'API **Converse** de Bedrock avec **toolConfig** :
-
-```mermaid
-flowchart TD
-    subgraph send["Ce qu'on ENVOIE à Bedrock"]
-        M["messages[]\n(historique conversation)"]
-        TS["toolConfig.tools[]\n(4 tool definitions)"]
-        SYS["system[]\n(prompt SRE)"]
-    end
-    
-    subgraph bedrock["Bedrock Converse API"]
-        LLM["Claude réfléchit\net décide"]
-    end
-    
-    subgraph response["Ce que Bedrock RETOURNE"]
-        R1["Cas 1: toolUse\n{name, input, toolUseId}"]
-        R2["Cas 2: text\n(diagnostic final)"]
-    end
-    
-    send --> bedrock
-    bedrock --> response
-    
-    R1 -->|"On exécute l'outil,\non renvoie le résultat"| send
-    R2 -->|"Fin de la boucle"| DONE["📋 Incident Report"]
-```
-
-Chaque **tool definition** envoyée à Bedrock ressemble à ça :
-
-```json
-{
-  "toolSpec": {
-    "name": "query_prometheus",
-    "description": "Execute a PromQL query...",
-    "inputSchema": {
-      "json": {
-        "type": "object",
-        "properties": {
-          "query": {"type": "string"}
-        },
-        "required": ["query"]
-      }
-    }
-  }
-}
-```
-
-> Claude **lit les descriptions** et **décide** quel outil est pertinent pour sa tâche.
-
----
-
-## 5. Le flux de données complet
-
-```mermaid
-flowchart LR
-    subgraph data_in["Données Entrantes"]
-        D1["CPU/RAM/Disk\n(node-exporter)"]
-        D2["Logs applicatifs\n(Promtail)"]
-    end
-    
-    subgraph storage["Stockage"]
-        S1["Prometheus\n(métriques TSDB)"]
-        S2["Loki\n(logs indexés)"]
-    end
-    
-    subgraph agent["Agent IA"]
-        direction TB
-        A1["Scheduler\n(toutes les 5 min)"]
-        A2["Boucle Agent"]
-        A3["Tools"]
-        A4["Bedrock Claude"]
-        A1 --> A2
-        A2 <--> A4
-        A4 -.->|"toolUse"| A3
-        A3 -.->|"résultats"| A2
-    end
-    
-    subgraph output["Sortie"]
-        O1["📋 Incidents\n(GET /incidents)"]
-        O2["📊 API Status\n(GET /status)"]
-    end
-    
-    D1 --> S1
-    D2 --> S2
-    A3 --> S1
-    A3 --> S2
-    A2 --> O1
-    agent --> O2
-```
-
----
-
-## 6. Exemple concret : Scénario de crash DB
-
-### Étape 1 — Le problème se produit
-L'application web essaie de se connecter à la DB mais elle est down. Des logs d'erreur sont écrits :
-```
-2026-03-28 02:30:00 - ERROR - DatabaseConnectionError: impossible de se connecter (timeout)
-2026-03-28 02:30:05 - ERROR - DatabaseConnectionError: impossible de se connecter (timeout)
-2026-03-28 02:30:10 - ERROR - DatabaseConnectionError: impossible de se connecter (timeout)
-```
-
-### Étape 2 — Les données circulent
-- **Promtail** lit les nouveaux logs → les pousse vers **Loki** (EC2 Observabilité)
-- **Prometheus** scrape node-exporter → détecte que le CPU est à 95%
-
-### Étape 3 — L'agent se déclenche
-Le **scheduler** (toutes les 5 min) déclenche un cycle. L'agent envoie à Bedrock :
-> *"Vérifie l'état du système"* + les 4 tool definitions
-
-### Étape 4 — L'agent investigue lui-même
-Claude **décide** la séquence d'investigation :
-
-1. `get_system_overview()` → CPU: 95%, RAM: 80MB libre
-2. `query_loki({query: '{job="dummy_web_app"} |= "error"'})` → 47 lignes "DatabaseConnectionError"
-3. `check_service_health("http://10.0.1.5:8080/api/health")` → 200 OK mais 2.3s de latence
-
-### Étape 5 — L'agent conclut
-Claude produit son diagnostic final :
-```json
-{
-  "severity": "critical",
-  "analysis": "Le serveur de base de données à 10.0.0.5 est injoignable, causant des timeouts répétés. Le CPU élevé est dû aux tentatives de reconnexion en boucle.",
-  "cause": "Instance DB down ou réseau coupé vers 10.0.0.5",
-  "repair_command": "sudo systemctl restart postgresql && sudo systemctl status postgresql",
-  "metrics_checked": ["cpu_usage", "memory_available", "app_logs", "service_health"]
-}
-```
-Ce rapport est sauvegardé et accessible via `GET /api/v1/incidents`.
-
----
-
-## Prérequis AWS
-
-### IAM Role
-Attacher un IAM Role à l'EC2 de l'agent avec la policy : `AmazonBedrockFullAccess`
+## 4. Prérequis AWS
 
 ### Security Groups
+
 | Source SG | Destination SG | Port | Protocole |
 |---|---|---|---|
-| SG Agent | SG Observabilité | 9090 | TCP (Prometheus) |
-| SG Agent | SG Observabilité | 3100 | TCP (Loki) |
-| SG Agent | Internet / VPC Endpoint | 443 | HTTPS (Bedrock) |
+| SG Agent ML | SG Observabilité | 9090 | TCP (Prometheus) |
 | SG Target | SG Observabilité | 3100 | TCP (Promtail → Loki) |
 | SG Observabilité | SG Target | 9100 | TCP (Prometheus → Node Exporter) |
 
 ### VPC
 Les 3 EC2 doivent être dans le **même VPC**. Utiliser les **IPs privées** pour la communication.
 
+### Instance minimale
+L'EC2 Agent ML nécessite au moins **t2.small (2 GB RAM)** pour Prophet.
+
 ---
 
-## Déploiement
+## 5. Déploiement
 
-### 1. EC2 Target App
+### 5.1 EC2 Target App
 ```bash
 cd ec2-target-app
 docker-compose up -d
 ```
 
-### 2. EC2 Observabilité
+### 5.2 EC2 Observabilité
 ```bash
 cd ec2-observability
 # Éditer prometheus.yml avec l'IP privée de l'EC2 Target
 docker-compose up -d
 ```
 
-### 3. EC2 Agent IA
+### 5.3 EC2 Agent ML
+
 ```bash
-cd ec2-monitoring-agent
+# Installer Python + dépendances système
+sudo apt install -y python3 python3-pip python3-dev gcc g++
+
+# Cloner le projet
+cd ~
+git clone <URL_REPO> monitoring-ia
+
+# Installer les packages Python
+cd ~/monitoring-ia/ML
+pip3 install --user -r requirements.txt
+
+# Installer cmdstan (moteur de calcul pour Prophet)
+python3 -c "import cmdstanpy; cmdstanpy.install_cmdstan()"
+
+# Configurer le .env
 cp .env.example .env
-# Éditer .env avec les IPs privées
-docker-compose up -d --build
+nano .env
+# → Remplacer l'IP par celle de votre EC2 Observabilité
+
+# Créer le dossier de logs
+sudo mkdir -p /var/log/ml
+sudo chown ubuntu:ubuntu /var/log/ml
+
+# Créer les dossiers de modèles
+mkdir -p ~/monitoring-ia/ML/models/prophet
 ```
 
----
+### 5.4 Test manuel (dans l'ordre)
 
-## API de l'Agent
-
-### Contrôle
 ```bash
-# Vérifier la connectivité
-curl http://<IP_AGENT>:5000/api/v1/status
+# IsolationForest
+cd ~/monitoring-ia/ML
+python3 train_model.py         # entraîne le modèle
+python3 detect_anomalie.py     # teste la détection
 
-# Démarrer le monitoring proactif
-curl -X POST http://<IP_AGENT>:5000/api/v1/agent/start
-
-# Arrêter le monitoring
-curl -X POST http://<IP_AGENT>:5000/api/v1/agent/stop
-
-# Forcer un cycle immédiat
-curl -X POST http://<IP_AGENT>:5000/api/v1/agent/run-now
+# Prophet
+cd ~/monitoring-ia/ML/ML_Prophet
+python3 train_forcasting_model.py   # entraîne les 3 modèles
+python3 forecast_metrics.py         # génère les prédictions
 ```
 
-### Incidents
+### 5.5 Activer les cron jobs
+
 ```bash
-# Lister les incidents détectés par l'agent
-curl http://<IP_AGENT>:5000/api/v1/incidents
-
-# Effacer l'historique
-curl -X POST http://<IP_AGENT>:5000/api/v1/incidents/clear
+crontab -e
+# Coller le contenu de ML/ML_Prophet/cron.txt (adapter l'IP)
+# Vérifier : crontab -l
 ```
 
 ---
 
-## Outils de l'Agent
+## 6. Vérification
 
-L'agent dispose de 4 outils qu'il peut appeler **à sa discrétion** :
+```bash
+# Logs de détection d'anomalies
+tail -f /var/log/ml/detect.log
 
-| Outil | Description |
-|---|---|
-| `query_prometheus` | Exécute une requête PromQL (CPU, RAM, disk...) |
-| `query_loki` | Recherche dans les logs applicatifs (erreurs, warnings...) |
-| `check_service_health` | Vérifie si un endpoint HTTP répond |
-| `get_system_overview` | Snapshot complet du système (CPU, RAM, disk, load) |
+# Logs de prédictions
+tail -f /var/log/ml/forecast.log
+
+# Modèles entraînés
+ls -lh ~/monitoring-ia/ML/models/
+ls -lh ~/monitoring-ia/ML/models/prophet/
+```
+
+### Test de stress (sur l'EC2 Target)
+
+```bash
+sudo apt install -y stress
+stress --cpu 2 --timeout 120s
+```
+
+Puis sur l'EC2 Agent ML :
+```bash
+cd ~/monitoring-ia/ML
+python3 detect_anomalie.py
+# → Doit afficher : ⚠️ ANOMALIES DETECTED!
+```
 
 ---
 
-## Structure du projet
+## 7. Configuration (.env)
+
+Fichier `ML/.env` — seul fichier à configurer :
+
+```env
+PROMETHEUS_URL=http://<IP_PRIVEE_EC2_OBSERVABILITE>:9090
+MODEL_PATH=/home/ubuntu/monitoring-ia/ML/models/anomaly_model.pkl
+MODEL_DIR=/home/ubuntu/monitoring-ia/ML/models/prophet
+FORECAST_DAYS=7
+```
+
+---
+
+## 8. Structure du projet
 
 ```
 monitoring-ia/
-├── ec2-target-app/           # Serveur à surveiller
+├── README.md
+├── ec2-target-app/               # EC2 #1 — Serveur à surveiller
 │   ├── docker-compose.yml
-│   ├── dummy-app/app.py      # App Flask qui génère des logs
-│   └── promtail-config.yml   # Push les logs vers Loki
-├── ec2-observability/        # Stack de collecte
+│   ├── dummy-app/app.py          # App Flask qui génère des logs
+│   └── promtail-config.yml       # Push les logs vers Loki
+├── ec2-observability/            # EC2 #2 — Stack de collecte
 │   ├── docker-compose.yml
-│   ├── prometheus.yml        # Scrape les métriques
-│   └── loki-config.yml       # Stocke les logs
-└── ec2-monitoring-agent/     # Agent IA autonome
-    ├── docker-compose.yml
-    ├── Dockerfile
-    ├── .env.example
-    ├── requirements.txt
-    ├── run.py
-    └── app/
-        ├── __init__.py
-        ├── core/config.py
-        ├── agent/            # 🧠 Cœur de l'agent
-        │   ├── tools.py      # Définitions des outils
-        │   ├── loop.py       # Boucle autonome
-        │   └── scheduler.py  # Monitoring proactif
-        ├── services/
-        │   ├── bedrock.py    # Converse API + Tool Use
-        │   ├── prometheus.py
-        │   └── loki.py
-        └── api/
-            ├── routes.py     # Endpoints REST
-            └── error_handlers.py
+│   ├── prometheus.yml            # Scrape les métriques
+│   └── loki-config.yml           # Stocke les logs
+└── ML/                           # EC2 #3 — Machine Learning
+    ├── .env.example              # Configuration (IP Prometheus)
+    ├── requirements.txt          # Dépendances Python
+    ├── train_model.py            # Entraînement IsolationForest
+    ├── detect_anomalie.py        # Détection d'anomalies (cron */5)
+    └── ML_Prophet/
+        ├── cron.txt              # Définition des cron jobs
+        ├── train_forcasting_model.py  # Entraînement Prophet
+        └── forecast_metrics.py   # Prédictions + alertes (cron */15)
 ```
+
+---
+
+## 9. Dépendances ML
+
+| Package | Version | Rôle |
+|---|---|---|
+| scikit-learn | 1.5.2 | IsolationForest (détection d'anomalies) |
+| prophet | 1.1.4 | Prédiction de séries temporelles |
+| cmdstanpy | 1.0.8 | Moteur de calcul pour Prophet |
+| pandas | 2.2.3 | Manipulation de données |
+| numpy | 1.26.4 | Calculs numériques |
+| prometheus-api-client | 0.5.5 | Requêtes vers Prometheus |
+| python-dotenv | 1.0.1 | Chargement du fichier .env |
