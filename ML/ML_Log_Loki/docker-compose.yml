@@ -1,0 +1,17 @@
+services:
+  log-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: log-collector
+    restart: unless-stopped
+    environment:
+      - LOKI_URL=${LOKI_URL:-http://host.docker.internal:3100}
+      - LOKI_QUERY=${LOKI_QUERY:-{job="dummy-app"}}
+      - LOG_DATASET_PATH=/app/datasets/log_dataset.csv
+    volumes:
+      # Persister le dataset CSV sur la machine hôte
+      - ./datasets:/app/datasets
+    extra_hosts:
+      # Permet d'accéder aux services de l'hôte depuis le conteneur
+      - "host.docker.internal:host-gateway"
