@@ -109,6 +109,12 @@ def query_loki(start_time: datetime, end_time: datetime,
         "direction": "forward",
     }
 
+    # DEBUG: show exactly what we send
+    print(f"   [DEBUG] URL: {url}")
+    print(f"   [DEBUG] Query: {LOKI_QUERY}")
+    print(f"   [DEBUG] Start: {start_ns} ({start_time.strftime('%Y-%m-%d %H:%M:%S')})")
+    print(f"   [DEBUG] End:   {end_ns} ({end_time.strftime('%Y-%m-%d %H:%M:%S')})")
+
     try:
         resp = requests.get(url, params=params, timeout=30)
         resp.raise_for_status()
@@ -121,6 +127,18 @@ def query_loki(start_time: datetime, end_time: datetime,
         return []
 
     data = resp.json()
+
+    # DEBUG: show raw response
+    print(f"   [DEBUG] Response status: {data.get('status')}")
+    result_count = len(data.get("data", {}).get("result", []))
+    print(f"   [DEBUG] Streams in result: {result_count}")
+    if result_count > 0:
+        first_stream = data["data"]["result"][0]
+        print(f"   [DEBUG] First stream labels: {first_stream.get('stream')}")
+        print(f"   [DEBUG] Values count: {len(first_stream.get('values', []))}")
+    else:
+        # Show full response for debugging
+        print(f"   [DEBUG] Full response: {resp.text[:500]}")
 
     if data.get("status") != "success":
         print(f"   ❌ Loki query failed: {data}")
