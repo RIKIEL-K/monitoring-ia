@@ -356,6 +356,10 @@ def run_stream(interval: int, output_path: str, limit: int = 5000):
     poll_count = 0
     total_collected = 0
 
+    # First poll: look back 1 hour to catch existing logs
+    # Subsequent polls: start from where the last poll ended
+    last_poll_time = datetime.now() - timedelta(hours=1)
+
     try:
         while True:
             poll_count += 1
@@ -364,11 +368,11 @@ def run_stream(interval: int, output_path: str, limit: int = 5000):
             print(f"{'─' * 50}")
             print(f"Poll #{poll_count} at {now.strftime('%H:%M:%S')}")
 
-            # Fetch logs from the last interval window (with 10s overlap)
-            window = timedelta(seconds=interval + 10)
-            start_time = now - window
-
+            # Query from last poll time to now
+            start_time = last_poll_time - timedelta(seconds=5)  # 5s overlap for safety
             raw_lines = query_loki(start_time, now, limit=limit)
+            last_poll_time = now  # Track for next iteration
+
             print(f"   Retrieved {len(raw_lines)} lines")
 
             # Parse
