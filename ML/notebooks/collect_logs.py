@@ -3,7 +3,8 @@
 Collecteur de logs Loki → CSV.
 
 Récupère les logs depuis Loki et les stocke fidèlement dans un CSV
-incrémental (sans doublons). Aucune classification, aucun traitement.
+incrémental (sans doublons). Les logs JSON sont éclatés en colonnes
+pour faciliter l'analyse MLOps.
 
 Usage:
     # Collecte des dernières 24h
@@ -19,6 +20,7 @@ Cron (toutes les 5 minutes, collecte la dernière heure) :
 import os
 import sys
 import csv
+import json
 import hashlib
 import argparse
 from datetime import datetime, timedelta, timezone
@@ -40,13 +42,93 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 DATASETS_DIR = os.path.join(PROJECT_ROOT, 'datasets')
 CSV_PATH = os.path.join(DATASETS_DIR, 'logs_dataset.csv')
 
+# Colonnes du CSV — les champs JSON de l'app sont éclatés en colonnes
 CSV_COLUMNS = [
-    'timestamp_ns',    # Timestamp Loki en nanosecondes (identifiant unique)
-    'timestamp',       # Timestamp lisible (ISO 8601)
-    'raw_log',         # Ligne de log brute telle que reçue de Loki
-    'log_hash',        # Hash MD5 pour dédoublonnage
-    'collected_at',    # Quand on a collecté ce log
+    'timestamp',          # Timestamp du log (ISO 8601, depuis le JSON de l'app)
+    'level',              # INFO, WARNING, ERROR
+    'service',            # dummy-target-app
+    'message',            # Contenu du message
+    'endpoint',           # Route HTTP (/api/health, /, etc.)
+    'method',             # GET, POST
+    'status_code',        # 200, 401, 500, 504
+    'response_time_ms',   # Temps de réponse en ms
+    'error_type',         # DatabaseConnectionError, AuthFailure, etc.
+    'error_detail',       # Détail de l'erreur
+    'client_ip',          # IP du client
+    'component',          # database, auth, payment, web, system
+    'action',             # db_connect, login, health_check, etc.
+    'raw_log',            # Ligne JSON brute complète (backup)
+    'log_hash',           # Hash MD5 pour dédoublonnage
+    'collected_at',       # Quand on a collecté ce log
 ]
+
+
+# ============================================================================
+# Parsing des logs JSON
+# ============================================================================
+
+def parse_log_line(raw_line: str, loki_ts_ns: str, collected_at: str) -> dict:
+    """
+    Parse une ligne de log. Supporte le format JSON structuré
+    et fallback sur le format texte brut pour rétro-compatibilité.
+
+    Args:
+        raw_line: Ligne de log brute reçue de Loki
+        loki_ts_ns: Timestamp Loki en nanosecondes
+        collected_at: Timestamp de collecte ISO 8601
+
+    Returns:
+        Dict avec toutes les colonnes CSV remplies
+    """
+    log_hash = hashlib.md5(f"{loki_ts_ns}_{raw_line}".encode()).hexdigest()
+
+    # Essayer de parser comme JSON (nouveau format)
+    try:
+        data = json.loads(raw_line)
+
+        return {
+            'timestamp':        data.get('timestamp', ''),
+            'level':            data.get('level', ''),
+            'service':          data.get('service', ''),
+            'message':          data.get('message', ''),
+            'endpoint':         data.get('endpoint', ''),
+            'method':           data.get('method', ''),
+            'status_code':      data.get('status_code', ''),
+            'response_time_ms': data.get('response_time_ms', ''),
+            'error_type':       data.get('error_type', ''),
+            'error_detail':     data.get('error_detail', ''),
+            'client_ip':        data.get('client_ip', ''),
+            'component':        data.get('component', ''),
+            'action':           data.get('action', ''),
+            'raw_log':          raw_line,
+            'log_hash':         log_hash,
+            'collected_at':     collected_at,
+        }
+
+    except (json.JSONDecodeError, TypeError):
+        # Fallback : ancien format texte brut
+        # On stocke le message brut, les champs structurés restent vides
+        ts_seconds = int(loki_ts_ns) / 1e9
+        ts_readable = datetime.fromtimestamp(ts_seconds, tz=timezone.utc).isoformat()
+
+        return {
+            'timestamp':        ts_readable,
+            'level':            '',
+            'service':          '',
+            'message':          raw_line,
+            'endpoint':         '',
+            'method':           '',
+            'status_code':      '',
+            'response_time_ms': '',
+            'error_type':       '',
+            'error_detail':     '',
+            'client_ip':        '',
+            'component':        '',
+            'action':           '',
+            'raw_log':          raw_line,
+            'log_hash':         log_hash,
+            'collected_at':     collected_at,
+        }
 
 
 # ============================================================================
@@ -59,7 +141,7 @@ def fetch_logs_from_loki(loki_url: str, query: str = LOGQL_QUERY,
     Récupère les logs depuis Loki via l'API query_range.
 
     Returns:
-        Liste de dicts {timestamp_ns, timestamp, raw_log, log_hash, collected_at}
+        Liste de dicts prêts pour le CSV
     """
     end = datetime.now(timezone.utc)
     start = end - timedelta(hours=hours)
@@ -87,27 +169,23 @@ def fetch_logs_from_loki(loki_url: str, query: str = LOGQL_QUERY,
         data = resp.json()
 
         records = []
+        json_count = 0
+        text_count = 0
+
         for stream in data.get('data', {}).get('result', []):
             for value in stream.get('values', []):
-                ts_ns = value[0]       # timestamp nanoseconds
-                raw_log = value[1]     # raw log line
+                ts_ns = value[0]
+                raw_log = value[1]
 
-                # Timestamp lisible depuis les nanosecondes Loki
-                ts_seconds = int(ts_ns) / 1e9
-                ts_readable = datetime.fromtimestamp(ts_seconds, tz=timezone.utc).isoformat()
+                record = parse_log_line(raw_log, ts_ns, now_iso)
+                records.append(record)
 
-                # Hash pour dédoublonnage (timestamp nano + contenu)
-                log_hash = hashlib.md5(f"{ts_ns}_{raw_log}".encode()).hexdigest()
+                if record['level']:  # JSON parsé avec succès
+                    json_count += 1
+                else:
+                    text_count += 1
 
-                records.append({
-                    'timestamp_ns': ts_ns,
-                    'timestamp': ts_readable,
-                    'raw_log': raw_log,
-                    'log_hash': log_hash,
-                    'collected_at': now_iso,
-                })
-
-        print(f"  {len(records)} logs recuperes")
+        print(f"  {len(records)} logs recuperes ({json_count} JSON, {text_count} texte brut)")
         return records
 
     except requests.exceptions.ConnectionError:
