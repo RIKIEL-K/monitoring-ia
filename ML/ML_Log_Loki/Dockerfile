@@ -16,6 +16,7 @@ COPY Log_collection/log_collector.py .
 
 RUN mkdir -p /app/datasets
 
+ENV PYTHONUNBUFFERED=1
 ENV LOKI_URL=http://loki:3100
 ENV LOKI_QUERY={job="dummy-app"}
 ENV LOG_DATASET_PATH=/app/datasets/log_dataset.csv
