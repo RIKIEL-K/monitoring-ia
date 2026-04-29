@@ -1,0 +1,12 @@
+.agent/
+datasets/
+__pycache__/
+*.pyc
+.env
+.env
+_text.txt
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
