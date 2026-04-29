@@ -6,21 +6,35 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://${LOKI_IP}:3100/loki/api/v1/push
+  # IP OF YOUR OBSERVABILITY EC2
+  - url: http://54.164.70.49:3100/loki/api/v1/push
 
 scrape_configs:
-  - job_name: 'system'
+  - job_name: 'dummy_app_logs'
     static_configs:
       - targets:
           - localhost
         labels:
-          job: 'system_logs'
-          __path__: /var/log/*.log
-  - job_name: 'app'
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: 'app_logs'
-          __path__: /var/log/app-logs/*.log
+          job: 'dummy_web_app'
+          __path__: /var/log/dummy/*.log
 
+    # Pipeline : parser les logs JSON et extraire les labels pour Grafana
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            service: service
+            component: component
+            action: action
+            error_type: error_type
+            endpoint: endpoint
+            status_code: status_code
+
+      - labels:
+          level:
+          service:
+          component:
+          action:
+          error_type:
+          endpoint:
+          status_code:
