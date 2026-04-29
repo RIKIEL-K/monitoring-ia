@@ -40,7 +40,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 # Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 LOKI_URL = os.getenv("LOKI_URL", "http://10.0.1.XX:3100")
-LOKI_QUERY = os.getenv("LOKI_QUERY", '{job="dummy-app"}')
+LOKI_QUERY = os.getenv("LOKI_QUERY", '{job="app_logs"}')
 DEFAULT_OUTPUT = os.getenv("LOG_DATASET_PATH",
                            os.path.join(os.path.dirname(__file__), "datasets", "log_dataset.csv"))
 

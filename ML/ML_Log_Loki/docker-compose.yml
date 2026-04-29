@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       - LOKI_URL=${LOKI_URL:-http://host.docker.internal:3100}
-      - LOKI_QUERY=${LOKI_QUERY:-{job="dummy-app"}}
+      - LOKI_QUERY=${LOKI_QUERY:-{job="app_logs"}}
       - LOG_DATASET_PATH=/app/datasets/log_dataset.csv
     volumes:
       # Persister le dataset CSV sur la machine hôte

@@ -6,7 +6,7 @@ __pycache__/
 _text.txt
 
 # ML generated files
-ML/datasets/*.csv
+
 ML/models/
 
 # Editor
