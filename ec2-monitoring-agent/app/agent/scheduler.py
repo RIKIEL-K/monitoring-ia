@@ -29,7 +29,7 @@ def init_scheduler(app):
         func=_run_cycle,
         trigger=IntervalTrigger(minutes=interval),
         id=JOB_ID,
-        name="AI Monitoring Cycle",
+        name="ML Monitoring Cycle",
         replace_existing=True,
         max_instances=1  # Never run two cycles simultaneously
     )

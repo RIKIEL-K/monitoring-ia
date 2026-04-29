@@ -49,7 +49,7 @@ def get_recent_logs(query: str, limit: int = 50, time_range_minutes: int = 15) -
         response.raise_for_status()
         results = response.json().get('data', {}).get('result', [])
 
-        # Flatten logs for easier processing by the LLM
+        # Flatten logs into a simple list of strings
         logs = []
         for stream in results:
             for value in stream.get('values', []):

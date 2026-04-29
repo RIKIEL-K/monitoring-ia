@@ -1,13 +1,13 @@
 """
-Agent Tools — Outils que l'agent Strands peut appeler.
+Monitoring Tools — Fonctions utilitaires pour la collecte de métriques.
 
-Chaque fonction est décorée avec @tool. Strands génère automatiquement
-le schéma JSON à partir des type hints et de la docstring.
+Ces fonctions interrogent Prometheus et Loki pour récupérer
+les métriques système et les logs applicatifs.
+Elles sont appelées directement par la boucle de monitoring (loop.py).
 """
 import logging
 import time as _time
 import requests
-from strands import tool
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +27,9 @@ def configure_tools(prometheus_url: str, loki_url: str, request_timeout: int = 1
 
 
 # =============================================================================
-# TOOL DEFINITIONS (décorées @tool — Strands génère le toolSpec automatiquement)
+# TOOL DEFINITIONS
 # =============================================================================
 
-@tool
 def query_prometheus(query: str) -> dict:
     """
     Execute a PromQL query against Prometheus to get system metrics.
@@ -75,7 +74,6 @@ def query_prometheus(query: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-@tool
 def query_loki(query: str, limit: int = 20) -> dict:
     """
     Execute a LogQL query against Loki to fetch recent application logs.
@@ -123,7 +121,6 @@ def query_loki(query: str, limit: int = 20) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-@tool
 def check_service_health(url: str) -> dict:
     """
     Check if a service endpoint is healthy by making an HTTP GET request.
@@ -150,7 +147,6 @@ def check_service_health(url: str) -> dict:
         return {"status": "error", "url": url, "message": str(e)}
 
 
-@tool
 def get_system_overview() -> dict:
     """
     Get a comprehensive snapshot of the target server's health:

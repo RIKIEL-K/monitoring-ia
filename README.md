@@ -1,6 +1,6 @@
 # 📊 Monitoring IA — AIOps avec Machine Learning
 
-Un **agent IA autonome** qui monitore des serveurs sur AWS EC2 en utilisant **AWS Bedrock** (Claude) avec **Tool Use**.
+Une plateforme de **monitoring MLOps** qui surveille des serveurs sur AWS EC2 en utilisant du **Machine Learning** (IsolationForest + Prophet) et une analyse par règles.
 
 > **IsolationForest** détecte les anomalies CPU en temps réel.
 > **Prophet** prédit l'évolution des métriques sur 7 jours.
@@ -27,20 +27,19 @@ flowchart TB
             LOKI["Loki\n:3100"]
         end
         
-        subgraph EC2_3["EC2 #3 — Agent IA"]
+        subgraph EC2_3["EC2 #3 — Agent ML"]
             API["🔌 Flask API\n:5000"]
             SCHED["⏰ Scheduler"]
-            LOOP["🧠 Agent Loop"]
-            TOOLS["🔧 Tools"]
+            LOOP["🔧 Monitoring Loop"]
+            ML["🤖 ML Models\n(IsolationForest + Prophet)"]
         end
     end
 
     NE -->|"scrape :9100\n(métriques CPU/RAM/disk)"| PROM
     PT -->|"push :3100\n(logs applicatifs)"| LOKI
-    TOOLS -->|"requête PromQL"| PROM
-    TOOLS -->|"requête LogQL"| LOKI
-    TOOLS -->|"HTTP health check"| APP
-    LOOP <-->|"Converse API\n(HTTPS :443)"| BEDROCK["☁️ AWS Bedrock\nClaude"]
+    LOOP -->|"requête PromQL"| PROM
+    LOOP -->|"requête LogQL"| LOKI
+    LOOP -->|"HTTP health check"| APP
     
     style EC2_1 fill:#1a1a2e,stroke:#e94560,color:#fff
     style EC2_2 fill:#1a1a2e,stroke:#0f3460,color:#fff
@@ -51,7 +50,7 @@ flowchart TB
 |---|---|---|---|
 | **Serveur Cible** | Dummy App + Node Exporter + Promtail | [ec2-target-app](./ec2-target-app) | 8080, 9100 |
 | **Observabilité** | Prometheus + Loki | [ec2-observability](./ec2-observability) | 9090, 3100 |
-| **Agent IA** | Flask API + Agent Loop + Scheduler | [ec2-monitoring-agent](./ec2-monitoring-agent) | 5000 |
+| **Agent ML** | Flask API + Monitoring Loop + ML Models | [ec2-monitoring-agent](./ec2-monitoring-agent) | 5000 |
 
 ---
 
@@ -70,173 +69,74 @@ flowchart LR
     B -->|"log"| L["/var/log/ml/detect.log"]
 ```
 
-**Problèmes** : le LLM reçoit des données qu'il n'a pas demandées, le code décide quoi collecter, pas d'investigation.
+### Prophet — Prédiction de métriques
 
-#### ✅ Agent IA (notre système)
-
-```mermaid
-flowchart LR
-    B1["Cycle déclenché"] --> B2["Agent DÉCIDE\nquoi investiguer"]
-    B2 --> B3["Appelle un outil"]
-    B3 --> B4["Reçoit les résultats"]
-    B4 --> B2
-    B2 -->|"assez d'info"| B5["Diagnostic final"]
-```
+Prophet prédit l'évolution future des métriques clés sur 7 jours :
 
 **Métriques prédites** :
 | Métrique | Query PromQL | Seuil d'alerte |
 |---|---|---|
-| **Qui décide quoi investiguer ?** | Le code (hardcodé) | Le LLM (autonome) |
-| **Monitoring** | Réactif (attend une alerte) | Proactif (scheduler) |
-| **Outils** | Tout en bloc | Appelés à la demande |
-| **Investigation** | 1 appel LLM | Boucle multi-itérations |
-| **Adaptabilité** | Requêtes fixes | S'adapte au contexte |
-| **Historique** | Aucun | Incidents sauvegardés |
+| CPU usage | `100 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100` | > 80% |
+| Mémoire disponible | `node_memory_MemAvailable_bytes` | < 200 MB |
+| Espace disque | `node_filesystem_avail_bytes{mountpoint="/"}` | < 1 GB |
 
 ---
 
-## 3. La boucle agent en détail
+## 3. La boucle de monitoring en détail
 
 Voici exactement ce qui se passe à chaque cycle de monitoring :
 
 ```mermaid
 sequenceDiagram
     participant S as ⏰ Scheduler
-    participant L as 🧠 Agent Loop
-    participant B as ☁️ Bedrock Claude
-    participant T as 🔧 Tools
+    participant L as 🔧 Monitoring Loop
     participant P as 📈 Prometheus
     participant K as 📝 Loki
     participant A as 🌐 Target App
 
     S->>L: Déclenche un cycle
-    L->>B: Prompt: "Vérifie l'état du système"<br/>+ 4 tool definitions
     
-    Note over B: L'agent RÉFLÉCHIT:<br/>"Commençons par un overview"
-    B->>L: toolUse: get_system_overview()
-    L->>T: Exécute get_system_overview
-    T->>P: PromQL: node_cpu, node_memory, etc.
-    P-->>T: Résultats métriques
-    T-->>L: {cpu: 92%, ram: 340MB free}
-    L->>B: toolResult: {cpu: 92%, ram: 340MB}
+    L->>P: PromQL: CPU, RAM, disk, load
+    P-->>L: Métriques système
     
-    Note over B: L'agent RÉFLÉCHIT:<br/>"CPU à 92% — c'est élevé,<br/>regardons les logs"
-    B->>L: toolUse: query_loki({query: "error"})
-    L->>T: Exécute query_loki
-    T->>K: LogQL query
-    K-->>T: 15 lignes de logs
-    T-->>L: {logs: ["DatabaseConnectionError..."]}
-    L->>B: toolResult: {15 error logs}
+    Note over L: Analyse CPU: 92%<br/>→ severity = critical
+
+    L->>K: LogQL: {job="dummy_web_app"} |= "error"
+    K-->>L: Logs d'erreurs
     
-    Note over B: L'agent RÉFLÉCHIT:<br/>"Des erreurs DB,<br/>vérifions l'app"
-    B->>L: toolUse: check_service_health(/health)
-    L->>T: Exécute check_health
-    T->>A: GET /api/health
-    A-->>T: 200 OK (0.5s)
-    T-->>L: {status: healthy, 0.5s}
-    L->>B: toolResult: {healthy}
+    Note over L: 47 erreurs DB trouvées<br/>→ repair: restart postgresql
+
+    L->>A: GET /api/health
+    A-->>L: 200 OK (0.5s)
     
-    Note over B: L'agent CONCLUT:<br/>"App OK mais DB errors<br/>+ CPU high → fuite mémoire"
-    B-->>L: Diagnostic JSON final
+    Note over L: App OK mais DB errors<br/>+ CPU high → diagnostic final
+    
     L->>L: Sauvegarde incident
 ```
 
----
+### Règles d'analyse
 
-## 4. Le mécanisme Bedrock Tool Use
+L'agent applique des **seuils configurables** pour diagnostiquer les problèmes :
 
-Le cœur technique du système agent repose sur l'API **Converse** de Bedrock avec **toolConfig** :
+| Métrique | Warning | Critical |
+|---|---|---|
+| CPU | > 80% | > 95% |
+| Mémoire disponible | < 500 MB | < 200 MB |
+| Espace disque | < 5 GB | < 1 GB |
+| Load average (5m) | > 2.0 | > 5.0 |
+| Error logs (15 min) | ≥ 5 | ≥ 20 |
 
-```mermaid
-flowchart TD
-    subgraph send["Ce qu'on ENVOIE à Bedrock"]
-        M["messages[]\n(historique conversation)"]
-        TS["toolConfig.tools[]\n(4 tool definitions)"]
-        SYS["system[]\n(prompt SRE)"]
-    end
-    
-    subgraph bedrock["Bedrock Converse API"]
-        LLM["Claude réfléchit\net décide"]
-    end
-    
-    subgraph response["Ce que Bedrock RETOURNE"]
-        R1["Cas 1: toolUse\n{name, input, toolUseId}"]
-        R2["Cas 2: text\n(diagnostic final)"]
-    end
-    
-    send --> bedrock
-    bedrock --> response
-    
-    R1 -->|"On exécute l'outil,\non renvoie le résultat"| send
-    R2 -->|"Fin de la boucle"| DONE["📋 Incident Report"]
-```
+### Patterns de logs détectés
 
-Chaque **tool definition** envoyée à Bedrock ressemble à ça :
-
-```json
-{
-  "toolSpec": {
-    "name": "query_prometheus",
-    "description": "Execute a PromQL query...",
-    "inputSchema": {
-      "json": {
-        "type": "object",
-        "properties": {
-          "query": {"type": "string"}
-        },
-        "required": ["query"]
-      }
-    }
-  }
-}
-```
-
-> Claude **lit les descriptions** et **décide** quel outil est pertinent pour sa tâche.
+| Pattern | Action suggérée |
+|---|---|
+| `DatabaseConnectionError` | `sudo systemctl restart postgresql` |
+| `timeout` | Investigation réseau |
+| `connection refused` | Vérification service cible |
 
 ---
 
-## 5. Le flux de données complet
-
-```mermaid
-flowchart LR
-    subgraph data_in["Données Entrantes"]
-        D1["CPU/RAM/Disk\n(node-exporter)"]
-        D2["Logs applicatifs\n(Promtail)"]
-    end
-    
-    subgraph storage["Stockage"]
-        S1["Prometheus\n(métriques TSDB)"]
-        S2["Loki\n(logs indexés)"]
-    end
-    
-    subgraph agent["Agent IA"]
-        direction TB
-        A1["Scheduler\n(toutes les 5 min)"]
-        A2["Boucle Agent"]
-        A3["Tools"]
-        A4["Bedrock Claude"]
-        A1 --> A2
-        A2 <--> A4
-        A4 -.->|"toolUse"| A3
-        A3 -.->|"résultats"| A2
-    end
-    
-    subgraph output["Sortie"]
-        O1["📋 Incidents\n(GET /incidents)"]
-        O2["📊 API Status\n(GET /status)"]
-    end
-    
-    D1 --> S1
-    D2 --> S2
-    A3 --> S1
-    A3 --> S2
-    A2 --> O1
-    agent --> O2
-```
-
----
-
-## 6. Exemple concret : Scénario de crash DB
+## 4. Exemple concret : Scénario de crash DB
 
 ### Étape 1 — Le problème se produit
 L'application web essaie de se connecter à la DB mais elle est down. Des logs d'erreur sont écrits :
@@ -251,25 +151,23 @@ L'application web essaie de se connecter à la DB mais elle est down. Des logs d
 - **Prometheus** scrape node-exporter → détecte que le CPU est à 95%
 
 ### Étape 3 — L'agent se déclenche
-Le **scheduler** (toutes les 5 min) déclenche un cycle. L'agent envoie à Bedrock :
-> *"Vérifie l'état du système"* + les 4 tool definitions
+Le **scheduler** (toutes les 5 min) déclenche un cycle de monitoring.
 
-### Étape 4 — L'agent investigue lui-même
-Claude **décide** la séquence d'investigation :
+### Étape 4 — L'agent collecte et analyse
 
 1. `get_system_overview()` → CPU: 95%, RAM: 80MB libre
 2. `query_loki({query: '{job="dummy_web_app"} |= "error"'})` → 47 lignes "DatabaseConnectionError"
 3. `check_service_health("http://10.0.1.5:8080/api/health")` → 200 OK mais 2.3s de latence
 
-### Étape 5 — L'agent conclut
-Claude produit son diagnostic final :
+### Étape 5 — L'agent diagnostique par règles
+L'analyse par seuils produit :
 ```json
 {
   "severity": "critical",
-  "analysis": "Le serveur de base de données à 10.0.0.5 est injoignable, causant des timeouts répétés. Le CPU élevé est dû aux tentatives de reconnexion en boucle.",
-  "cause": "Instance DB down ou réseau coupé vers 10.0.0.5",
-  "repair_command": "sudo systemctl restart postgresql && sudo systemctl status postgresql",
-  "metrics_checked": ["cpu_usage", "memory_available", "app_logs", "service_health"]
+  "analysis": "CPU usage critical: 95.0%; 47 error logs in last 15 minutes; 47 database/connection error(s)",
+  "cause": "CPU usage critical: 95.0%",
+  "repair_command": "top -b -n 1 | head -20 && sudo systemctl restart postgresql",
+  "metrics_checked": ["cpu_usage", "memory_available", "error_logs", "service_health"]
 }
 ```
 Ce rapport est sauvegardé et accessible via `GET /api/v1/incidents`.
@@ -278,15 +176,11 @@ Ce rapport est sauvegardé et accessible via `GET /api/v1/incidents`.
 
 ## Prérequis AWS
 
-### IAM Role
-Attacher un IAM Role à l'EC2 de l'agent avec la policy : `AmazonBedrockFullAccess`
-
 ### Security Groups
 | Source SG | Destination SG | Port | Protocole |
 |---|---|---|---|
 | SG Agent | SG Observabilité | 9090 | TCP (Prometheus) |
 | SG Agent | SG Observabilité | 3100 | TCP (Loki) |
-| SG Agent | Internet / VPC Endpoint | 443 | HTTPS (Bedrock) |
 | SG Target | SG Observabilité | 3100 | TCP (Promtail → Loki) |
 | SG Observabilité | SG Target | 9100 | TCP (Prometheus → Node Exporter) |
 
@@ -389,9 +283,9 @@ python3 detect_anomalie.py
 
 ---
 
-## Outils de l'Agent
+## Outils de monitoring
 
-L'agent dispose de 4 outils qu'il peut appeler **à sa discrétion** :
+L'agent dispose de 4 fonctions utilitaires pour la collecte de données :
 
 | Outil | Description |
 |---|---|
@@ -414,7 +308,7 @@ monitoring-ia/
 │   ├── docker-compose.yml
 │   ├── prometheus.yml        # Scrape les métriques
 │   └── loki-config.yml       # Stocke les logs
-└── ec2-monitoring-agent/     # Agent IA autonome
+└── ec2-monitoring-agent/     # Agent ML monitoring
     ├── docker-compose.yml
     ├── Dockerfile
     ├── .env.example
@@ -423,12 +317,12 @@ monitoring-ia/
     └── app/
         ├── __init__.py
         ├── core/config.py
-        ├── agent/            # 🧠 Cœur de l'agent
-        │   ├── tools.py      # Définitions des outils
-        │   ├── loop.py       # Boucle autonome
+        ├── agent/            # 🔧 Cœur du monitoring
+        │   ├── tools.py      # Fonctions de collecte
+        │   ├── loop.py       # Boucle de monitoring (règles + seuils)
         │   └── scheduler.py  # Monitoring proactif
         ├── services/
-        │   ├── bedrock.py    # Converse API + Tool Use
+        │   ├── orchestrator.py  # Analyse par règles
         │   ├── prometheus.py
         │   └── loki.py
         └── api/

@@ -1,1 +1,1 @@
-# Agent module — autonomous AI monitoring agent
+# Agent module — autonomous ML monitoring agent

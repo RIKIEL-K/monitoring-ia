@@ -36,7 +36,6 @@ def create_app(config_class=Config):
     app.logger.info(f"  Prometheus: {app.config['PROMETHEUS_URL']}")
     app.logger.info(f"  Loki: {app.config['LOKI_URL']}")
     app.logger.info(f"  Target App: {app.config.get('TARGET_APP_URL', 'N/A')}")
-    app.logger.info(f"  Bedrock model: {app.config.get('BEDROCK_MODEL_ID', 'N/A')}")
     app.logger.info(f"  Monitoring interval: {app.config.get('MONITORING_INTERVAL_MINUTES', 5)} min")
 
     return app

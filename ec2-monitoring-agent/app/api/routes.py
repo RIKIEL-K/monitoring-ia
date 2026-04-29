@@ -2,7 +2,6 @@ from flask import Blueprint, request, jsonify
 from app.services.orchestrator import handle_incident
 from app.services.prometheus import check_connectivity as check_prometheus
 from app.services.loki import check_connectivity as check_loki
-from app.services.bedrock import check_bedrock_connectivity
 
 bp = Blueprint('api', __name__)
 
@@ -14,7 +13,7 @@ bp = Blueprint('api', __name__)
 @bp.route('/health', methods=['GET'])
 def health_check():
     """Basic health check — confirms the agent process is running."""
-    return jsonify({"status": "ok", "message": "Intervention Agent is running."}), 200
+    return jsonify({"status": "ok", "message": "Monitoring Agent is running."}), 200
 
 
 @bp.route('/status', methods=['GET'])
@@ -25,19 +24,17 @@ def status_check():
     """
     prometheus_status = check_prometheus()
     loki_status = check_loki()
-    bedrock_status = check_bedrock_connectivity()
 
     all_ok = all(
         s.get('status') == 'ok'
-        for s in [prometheus_status, loki_status, bedrock_status]
+        for s in [prometheus_status, loki_status]
     )
 
     return jsonify({
         "status": "ok" if all_ok else "degraded",
         "dependencies": {
             "prometheus": prometheus_status,
-            "loki": loki_status,
-            "bedrock": bedrock_status
+            "loki": loki_status
         }
     }), 200 if all_ok else 503
 
@@ -84,12 +81,12 @@ def agent_run_now():
 
 
 # =============================================================================
-# Incidents — View agent-detected incidents
+# Incidents — View detected incidents
 # =============================================================================
 
 @bp.route('/incidents', methods=['GET'])
 def list_incidents():
-    """List incidents detected by the agent."""
+    """List incidents detected by the monitoring agent."""
     from app.agent.loop import get_incident_history
     limit = request.args.get('limit', 50, type=int)
     incidents = get_incident_history(limit=limit)
@@ -115,7 +112,7 @@ def clear_incidents():
 def receive_alert():
     """
     Receive an alert from Alertmanager (or manual POST).
-    This uses the legacy orchestrator flow (not the agent loop).
+    Uses the rule-based orchestrator for analysis.
     """
     data = request.get_json()
     if not data:
@@ -123,15 +120,3 @@ def receive_alert():
 
     result = handle_incident(data)
     return jsonify(result), 200
-
-
-@bp.route('/simulate', methods=['POST'])
-def simulate_incident():
-    """
-    Test endpoint — triggers a full agent monitoring cycle (same as /agent/run-now).
-    """
-    from app.agent.scheduler import run_now
-    result = run_now()
-    if result:
-        return jsonify({"message": "Simulation executed via agent", "result": result}), 200
-    return jsonify({"error": "Simulation failed — check logs"}), 500
