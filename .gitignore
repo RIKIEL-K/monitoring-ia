@@ -1,1 +1,6 @@
 .agent/
+datasets/
+__pycache__/
+*.pyc
+.env
+_text.txt
