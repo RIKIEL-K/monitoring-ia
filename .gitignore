@@ -3,8 +3,11 @@ datasets/
 __pycache__/
 *.pyc
 .env
-.env
 _text.txt
+
+# ML generated files
+ML/datasets/*.csv
+ML/models/
 
 # Editor
 .vscode/

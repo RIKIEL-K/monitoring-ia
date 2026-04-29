@@ -15,5 +15,8 @@ numpy==1.26.4
 # Prometheus API
 prometheus-api-client==0.5.5
 
+# HTTP Client (Loki API)
+requests==2.32.3
+
 # Configuration (.env)
 python-dotenv==1.0.1
