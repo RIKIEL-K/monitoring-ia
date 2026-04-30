@@ -46,7 +46,7 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_entry, ensure_ascii=False)
 
 
-# File handler — écrit dans le fichier .log (lu par Promtail)
+# File handler — écrit dans le fichier .log (lu par Grafana Alloy)
 json_formatter = JSONFormatter()
 file_handler = logging.FileHandler('/app/logs/dummy-app.log')
 file_handler.setFormatter(json_formatter)

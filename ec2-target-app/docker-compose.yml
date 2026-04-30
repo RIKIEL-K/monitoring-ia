@@ -8,16 +8,22 @@ services:
     volumes:
       - ./target-logs:/app/logs
 
-  node-exporter:
-    image: prom/node-exporter:latest
-    ports:
-      - "9100:9100"
-
-  promtail:
-    image: grafana/promtail:latest
+  alloy:
+    image: grafana/alloy:latest
     volumes:
-      - ./target-logs:/var/log/dummy
-      - ./promtail-config.yml:/etc/promtail/config.yml
-    command: -config.file=/etc/promtail/config.yml
+      - ./target-logs:/var/log/app-logs:ro
+      - ./config.alloy:/etc/alloy/config.alloy
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    env_file:
+      - .env
+    ports:
+      - "12345:12345"
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+    pid: host
     depends_on:
       - dummy-app
