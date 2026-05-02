@@ -1,4 +1,5 @@
 .agent/
+datasets/
 __pycache__/
 *.pyc
 .env
