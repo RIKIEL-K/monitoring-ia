@@ -16,7 +16,9 @@ import sys
 import re
 import warnings
 from datetime import datetime
+import urllib.parse
 
+import boto3
 import numpy as np
 import pandas as pd
 
@@ -383,6 +385,34 @@ class LogClusteringPipelineModel(mlflow.pyfunc.PythonModel):
         })
 
 
+def ensure_minio_bucket_exists(experiment_name: str):
+    """Vérifier et créer le bucket MinIO si nécessaire à partir de l'URI de l'expérience."""
+    exp = mlflow.get_experiment_by_name(experiment_name)
+    if not exp:
+        return
+    
+    artifact_uri = exp.artifact_location
+    if not artifact_uri.startswith("s3://"):
+        return
+        
+    bucket_name = urllib.parse.urlparse(artifact_uri).netloc
+    
+    try:
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=os.environ.get("MLFLOW_S3_ENDPOINT_URL"),
+            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
+        )
+        s3.head_bucket(Bucket=bucket_name)
+    except Exception:
+        print(f"  [MinIO] Création du bucket manquant : '{bucket_name}'...")
+        try:
+            s3.create_bucket(Bucket=bucket_name)
+        except Exception as create_err:
+            print(f"  [MinIO] Erreur création bucket : {create_err}")
+
+
 def main() -> int:
     args = parse_args()
 
@@ -392,6 +422,7 @@ def main() -> int:
     print_step(1, "Configuration MLflow + MinIO")
     setup_mlflow()
     mlflow.set_experiment(args.experiment_name)
+    ensure_minio_bucket_exists(args.experiment_name)
 
     run_name = args.run_name or f"kmeans-k{args.n_clusters}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 

@@ -67,7 +67,29 @@ ls -lh ~/monitoring-ia/ML/models/prophet/
 #   --register-model \
 #   --model-name log-clustering-kmeans \
 #   --promote-to-production
-#
 # --- Exécution Reproductible (MLflow Project) ---
 # Vous pouvez aussi exécuter le projet via son environnement conda isolé :
 # mlflow run ML/ML_Log_Loki -P n_clusters=8 -P register_model=true -P promote_to_production=true
+#
+# ===================================================================
+# 🚀 TEST END-TO-END DU WORKFLOW SUR EC2
+# ===================================================================
+#
+# ÉTAPE 1 : Entraîner et promouvoir le modèle en Production
+# python3 ML/ML_Log_Loki/scripts/train_log_clustering.py --register-model=true --promote-to-production=true
+#
+# ÉTAPE 2 : Démarrer le serveur API MLflow (Laissez tourner ou utilisez screen/tmux)
+# python3 -m mlflow models serve -m "models:/log-clustering-kmeans/Production" -p 5001 --env-manager local
+#
+# ÉTAPE 3 : Tester l'API avec de nouveaux logs (dans un autre terminal)
+# curl -X POST -H "Content-Type: application/json" -d '{
+#   "dataframe_split": {
+#     "columns": ["message"],
+#     "data": [
+#       ["level=error msg=\"timeout connection to database\""],
+#       ["level=info user=admin action=login success=true"]
+#     ]
+#   }
+# }' http://localhost:5001/invocations
+#
+# (La réponse devrait être un JSON contenant le cluster_id et le cluster_label pour chaque log)
