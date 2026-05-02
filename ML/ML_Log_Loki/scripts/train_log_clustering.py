@@ -341,9 +341,10 @@ class LogClusteringPipelineModel(mlflow.pyfunc.PythonModel):
     Modèle MLflow customisé (PyFunc) qui encapsule le nettoyage, 
     le TF-IDF, et le K-Means en un seul endpoint prêt pour l'API REST.
     """
-    def __init__(self, vectorizer, kmeans):
+    def __init__(self, vectorizer, kmeans, cluster_labels):
         self.vectorizer = vectorizer
         self.kmeans = kmeans
+        self.cluster_labels = cluster_labels
 
     def _clean_message(self, msg: str) -> str:
         import re
@@ -373,7 +374,13 @@ class LogClusteringPipelineModel(mlflow.pyfunc.PythonModel):
         # 3. K-Means
         preds = self.kmeans.predict(X)
         
-        return pd.DataFrame({"cluster_id": preds})
+        # 4. Ajout des labels lisibles
+        labels = [self.cluster_labels.get(p, "Unknown") for p in preds]
+        
+        return pd.DataFrame({
+            "cluster_id": preds,
+            "cluster_label": labels
+        })
 
 
 def main() -> int:
@@ -458,7 +465,7 @@ def main() -> int:
 
         # Création de la signature d'entrée/sortie pour l'API REST
         input_example = pd.DataFrame({"message": ["level=error msg='connection refused'"]})
-        output_example = pd.DataFrame({"cluster_id": [0]})
+        output_example = pd.DataFrame({"cluster_id": [0], "cluster_label": ["Erreurs Serveur"]})
         signature = infer_signature(input_example, output_example)
 
         # PyFunc : Enregistrement du pipeline complet prêt pour l'API
@@ -466,7 +473,7 @@ def main() -> int:
         
         model_info = mlflow.pyfunc.log_model(
             artifact_path="loki_pipeline_model",
-            python_model=LogClusteringPipelineModel(vectorizer, kmeans),
+            python_model=LogClusteringPipelineModel(vectorizer, kmeans, cluster_labels),
             signature=signature,
             registered_model_name=registered_model_name,
             input_example=input_example
