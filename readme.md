@@ -75,13 +75,19 @@ ls -lh ~/monitoring-ia/ML/models/prophet/
 # 🚀 TEST END-TO-END DU WORKFLOW SUR EC2
 # ===================================================================
 #
-# ÉTAPE 1 : Entraîner et promouvoir le modèle en Production
-# python3 ML/ML_Log_Loki/scripts/train_log_clustering.py --register-model=true --promote-to-production=true
+# ÉTAPE 1 : Démarrer le serveur de tracking MLflow en tâche de fond (port 5002)
+# export MLFLOW_S3_ENDPOINT_URL=http://localhost:9000
+# export AWS_ACCESS_KEY_ID=minioadmin
+# export AWS_SECRET_ACCESS_KEY=minioadmin
+# nohup venv/bin/python3 -m mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root s3://mlflow-artifacts --host 0.0.0.0 --port 5002 > mlflow_server.log 2>&1 &
 #
-# ÉTAPE 2 : Démarrer le serveur API MLflow (Laissez tourner ou utilisez screen/tmux)
-# python3 -m mlflow models serve -m "models:/log-clustering-kmeans/Production" -p 5001 --env-manager local
+# ÉTAPE 2 : Entraîner et promouvoir le modèle en Production
+# python3 ML_Log_Loki/scripts/train_log_clustering.py --register-model=true --promote-to-production=true
 #
-# ÉTAPE 3 : Tester l'API avec de nouveaux logs (dans un autre terminal)
+# ÉTAPE 3 : Démarrer le serveur API de prédiction MLflow en tâche de fond
+# nohup venv/bin/python3 -m mlflow models serve -m "models:/log-clustering-kmeans/Production" -p 5001 --env-manager local > mlflow_api_serve.log 2>&1 &
+#
+# ÉTAPE 4 : Tester l'API avec de nouveaux logs (dans un autre terminal)
 # curl -X POST -H "Content-Type: application/json" -d '{
 #   "dataframe_split": {
 #     "columns": ["message"],

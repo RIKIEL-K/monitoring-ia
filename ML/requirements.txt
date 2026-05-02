@@ -20,3 +20,7 @@ requests==2.32.3
 
 # Configuration (.env)
 python-dotenv==1.0.1
+mlflow==2.16.2
+boto3==1.35.0
+
+minio==7.2.5
