@@ -76,7 +76,7 @@ ls -lh ~/monitoring-ia/ML/models/prophet/
 # ===================================================================
 #
 # ÉTAPE 1 : Démarrer le serveur de tracking MLflow en tâche de fond (port 5002)
-# export MLFLOW_S3_ENDPOINT_URL=http://localhost:9000
+# export MLFLOW_S3_ENDPOINT_URL=http://
 # export AWS_ACCESS_KEY_ID=minioadmin
 # export AWS_SECRET_ACCESS_KEY=minioadmin
 # nohup venv/bin/python3 -m mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root s3://mlflow-artifacts --host 0.0.0.0 --port 5002 > mlflow_server.log 2>&1 &
