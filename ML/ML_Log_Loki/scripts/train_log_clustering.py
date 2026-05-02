@@ -25,6 +25,8 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 import mlflow
 import mlflow.sklearn
+import mlflow.pyfunc
+from mlflow.models.signature import infer_signature
 from dotenv import load_dotenv
 
 warnings.filterwarnings("ignore")
@@ -334,6 +336,46 @@ def _set_model_stage(model_name: str, model_info, target_stage: str):
     print(f"     Model URI : models:/{model_name}/{target_stage}")
 
 
+class LogClusteringPipelineModel(mlflow.pyfunc.PythonModel):
+    """
+    Modèle MLflow customisé (PyFunc) qui encapsule le nettoyage, 
+    le TF-IDF, et le K-Means en un seul endpoint prêt pour l'API REST.
+    """
+    def __init__(self, vectorizer, kmeans):
+        self.vectorizer = vectorizer
+        self.kmeans = kmeans
+
+    def _clean_message(self, msg: str) -> str:
+        import re
+        if not isinstance(msg, str):
+            return ""
+        msg = re.sub(r"\b\d+\b", "<NUM>", msg)
+        msg = re.sub(r"([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})", "<UUID>", msg)
+        msg = re.sub(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", "<IP>", msg)
+        return msg.lower().strip()
+
+    def predict(self, context, model_input):
+        import pandas as pd
+        
+        # MLflow REST API envoie généralement un DataFrame Pandas
+        if isinstance(model_input, pd.DataFrame):
+            col = "message" if "message" in model_input.columns else model_input.columns[0]
+            messages = model_input[col].tolist()
+        elif isinstance(model_input, list):
+            messages = model_input
+        else:
+            messages = [str(model_input)]
+
+        # 1. Nettoyage
+        cleaned = [self._clean_message(m) for m in messages]
+        # 2. TF-IDF
+        X = self.vectorizer.transform(cleaned)
+        # 3. K-Means
+        preds = self.kmeans.predict(X)
+        
+        return pd.DataFrame({"cluster_id": preds})
+
+
 def main() -> int:
     args = parse_args()
 
@@ -406,22 +448,30 @@ def main() -> int:
         mlflow.log_artifact(summary_path, "outputs")
 
         # --- Step 9 : Log + enregistrement du modèle ---
-        print_step(9, "Enregistrement du modèle dans MLflow + MinIO")
+        print_step(9, "Enregistrement du modèle (Pipeline PyFunc) dans MLflow + MinIO")
 
-        # Vectorizer : loggé comme artifact (pas dans le registry)
+        # Vectorizer : toujours loggé seul comme artifact (optionnel, pour debug)
         mlflow.sklearn.log_model(
             sk_model=vectorizer,
             artifact_path="tfidf_vectorizer",
         )
 
-        # K-Means : enregistrement optionnel dans le Model Registry
+        # Création de la signature d'entrée/sortie pour l'API REST
+        input_example = pd.DataFrame({"message": ["level=error msg='connection refused'"]})
+        output_example = pd.DataFrame({"cluster_id": [0]})
+        signature = infer_signature(input_example, output_example)
+
+        # PyFunc : Enregistrement du pipeline complet prêt pour l'API
         registered_model_name = args.model_name if args.register_model else None
-        model_info = mlflow.sklearn.log_model(
-            sk_model=kmeans,
-            artifact_path="kmeans_model",
+        
+        model_info = mlflow.pyfunc.log_model(
+            artifact_path="loki_pipeline_model",
+            python_model=LogClusteringPipelineModel(vectorizer, kmeans),
+            signature=signature,
             registered_model_name=registered_model_name,
+            input_example=input_example
         )
-        print(f"  K-Means loggé — artifact URI : {model_info.model_uri}")
+        print(f"  Pipeline PyFunc loggé — artifact URI : {model_info.model_uri}")
 
         if args.register_model:
             print(f"  Modèle enregistré dans le registry sous : {args.model_name}")
