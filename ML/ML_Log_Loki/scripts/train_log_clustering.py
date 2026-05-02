@@ -42,6 +42,17 @@ load_dotenv(os.path.join(PROJECT_DIR, ".env"))
 # ===================================================================
 # 1 — Argument Parser
 # ===================================================================
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 def parse_args() -> argparse.Namespace:
     """Définir et parser les arguments CLI."""
     parser = argparse.ArgumentParser(
@@ -91,14 +102,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--run-name",
         type=str,
-        default=None,
+        default="",
         help="Nom du run MLflow (auto-généré si non spécifié)",
     )
 
     # --- Model Registry ---
     parser.add_argument(
         "--register-model",
-        action="store_true",
+        type=str2bool,
+        nargs='?',
+        const=True,
         default=False,
         help="Enregistrer le modèle dans le MLflow Model Registry (stocké sur MinIO)",
     )
@@ -110,7 +123,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--promote-to-production",
-        action="store_true",
+        type=str2bool,
+        nargs='?',
+        const=True,
         default=False,
         help="Promouvoir automatiquement la nouvelle version en stage Production",
     )

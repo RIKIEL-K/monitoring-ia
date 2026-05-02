@@ -67,3 +67,7 @@ ls -lh ~/monitoring-ia/ML/models/prophet/
 #   --register-model \
 #   --model-name log-clustering-kmeans \
 #   --promote-to-production
+#
+# --- Exécution Reproductible (MLflow Project) ---
+# Vous pouvez aussi exécuter le projet via son environnement conda isolé :
+# mlflow run ML/ML_Log_Loki -P n_clusters=8 -P register_model=true -P promote_to_production=true
