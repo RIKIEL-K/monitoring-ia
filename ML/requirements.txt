@@ -1,0 +1,26 @@
+# =============================================================================
+# AIOps ML — Dépendances Python
+# =============================================================================
+# Installer avec : pip3 install -r requirements.txt
+# =============================================================================
+
+# Machine Learning
+scikit-learn==1.5.2
+
+# Data Processing
+pandas==2.2.3
+numpy==1.26.4
+
+# Prometheus API
+prometheus-api-client==0.5.5
+
+# HTTP Client (Loki API)
+requests==2.32.3
+
+# Configuration (.env)
+python-dotenv==1.0.1
+mlflow==2.16.2
+boto3==1.35.0
+
+matplotlib==3.9.2
+

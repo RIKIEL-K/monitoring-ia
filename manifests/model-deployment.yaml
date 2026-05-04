@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-serving
+  labels:
+    app: model-serving
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: model-serving
+  template:
+    metadata:
+      labels:
+        app: model-serving
+    spec:
+      containers:
+      - name: model-server
+        image: loki-kmeans-serve:v1
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 5001
+          name: http
+        env:
+        - name: MLFLOW_TRACKING_URI
+          value: "http://mlflow-service:5000"
+        - name: MLFLOW_S3_ENDPOINT_URL
+          value: "http://minio-service:9000"
+        - name: AWS_ACCESS_KEY_ID
+          value: "minioadmin"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "minioadmin"
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 5001
+          initialDelaySeconds: 30
+          periodSeconds: 10

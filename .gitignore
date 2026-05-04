@@ -1,0 +1,14 @@
+.agent/
+__pycache__/
+*.pyc
+.env
+_text.txt
+
+# ML generated files
+
+ML/models/
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
