@@ -1,0 +1,37 @@
+name: LokiLogClustering
+
+conda_env: conda.yaml
+
+entry_points:
+  main:
+    parameters:
+      csv_path: {type: string, default: "datasets/mock_loki_logs.csv"}
+      output_dir: {type: string, default: "datasets"}
+      max_features: {type: int, default: 100}
+      min_df: {type: int, default: 2}
+      max_df: {type: float, default: 0.95}
+      n_clusters: {type: int, default: 5}
+      n_init: {type: int, default: 10}
+      random_state: {type: int, default: 42}
+      k_range: {type: string, default: "3,5,8,10,12,15"}
+      experiment_name: {type: string, default: "log-clustering-loki"}
+      run_name: {type: string, default: ""}
+      register_model: {type: string, default: "false"}
+      model_name: {type: string, default: "log-clustering-kmeans"}
+      promote_to_production: {type: string, default: "false"}
+    command: >-
+      python scripts/train_log_clustering.py 
+      --csv-path "{csv_path}" 
+      --output-dir "{output_dir}" 
+      --max-features {max_features} 
+      --min-df {min_df} 
+      --max-df {max_df} 
+      --n-clusters {n_clusters} 
+      --n-init {n_init} 
+      --random-state {random_state} 
+      --k-range "{k_range}" 
+      --experiment-name "{experiment_name}" 
+      --run-name "{run_name}" 
+      --register-model {register_model} 
+      --model-name "{model_name}" 
+      --promote-to-production {promote_to_production}
