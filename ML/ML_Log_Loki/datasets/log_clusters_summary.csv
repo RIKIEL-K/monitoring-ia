@@ -1,6 +1,0 @@
-ClusterID,Label,TopTerms,ExampleLog,Count,Percentage,AvgResponseTime
-0,Opérations Auth (/api/data),"status_200, info, login_attempt, setting_update, page_visit, post, auth, db",Opération réussie sur /api/login,747,37.4,79.2
-1,Opérations Api (/about),"status_201, info, post, setting_update, api, login_attempt, web, db",Opération réussie sur /about,392,19.6,77.7
-3,Accès Non Autorisés (db),"warn, status_400, status_404, status_403, status_401, page_visit, post, db",Accès non autorisé ou ressource introuvable: /about,294,14.7,459.0
-2,Opérations Auth (/api/login),"data_fetch, status_200, info, post, auth, web, api_login, api",Opération réussie sur /about,287,14.4,78.5
-4,Erreurs Serveur (auth),"error, status_502, status_500, status_503, post, setting_update, auth, page_visit",Erreur interne lors de l'accès à /api/login,280,14.0,1782.2
