@@ -20,7 +20,7 @@ spec:
         - |
           pip install mlflow scikit-learn pandas boto3 && \
           cd /code && \
-          python ml/ml-log-loki/scripts/train_log_clustering.py --experiment-name "loki-prod" --register-model --model-name log-clustering-kmeans --promote-to-production
+          python ML/ml-log-loki/scripts/train_log_clustering.py --experiment-name "loki-prod" --register-model --model-name log-clustering-kmeans --promote-to-production
         env:
         - name: MLFLOW_TRACKING_URI
           value: "http://mlflow-service:5000"
