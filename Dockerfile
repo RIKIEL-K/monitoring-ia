@@ -1,5 +1,4 @@
-# Dockerfile for Camp Fitbitz Model Serving
-# This Dockerfile packages the AI Chef's anomaly detection model for deployment
+
 FROM python:3.12-slim
 WORKDIR /app
 RUN pip install --no-cache-dir \
