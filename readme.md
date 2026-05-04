@@ -198,7 +198,7 @@ Une fois les pods prêts, vous pouvez tester l'API qui est exposée sur le port 
 
 **Vérifier la santé de l'API :**
 ```bash
-curl http://localhost:30501/health
+curl http://localhost:30501/ping
 ```
 *(Attendu: 200 OK ou réponse vide, cela prouve que le modèle est bien chargé en mémoire).*
 
