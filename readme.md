@@ -108,6 +108,49 @@ Tant que la fenêtre SSH de l'Étape 2 reste ouverte, votre tunnel fonctionne ! 
 - **MinIO** : http://localhost:30901
 - **MLflow** : http://localhost:30500
 
+## 3. Exécution du Job d'entraînement dans Kubernetes
+
+Le but est d'exécuter l'entraînement en batch via Kubernetes, et de logger automatiquement les paramètres, les métriques et le modèle dans MLflow tout en stockant les artefacts dans MinIO.
+
+**Soumettre le Job :**
+```bash
+kubectl apply -f manifests/training-job.yaml
+```
+
+**Suivre les logs :**
+```bash
+kubectl logs -l app=training -f
+```
+
+*(La sortie attendue devrait indiquer la fin de l'entraînement et "Model logged to MLflow")*
+
+## 4. Vérification dans MLflow UI
+
+Le script gère automatiquement l'enregistrement et la promotion en production !
+1. Ouvrez l'UI MLflow (`http://localhost:30500`).
+2. Allez à l'expérience **loki-prod** et vérifiez le nouveau *run*.
+3. Vous verrez que votre modèle `log-clustering-kmeans` a été automatiquement promu en `Production`.
+
+## 5. Conteneurisation du service de Serving (Docker)
+
+Le but est d'empaqueter le serveur de prédiction MLflow dans une image Docker réutilisable pour servir le modèle enregistré.
+Un `Dockerfile` est déjà préparé à la racine du projet.
+
+**Construire l'image :**
+```bash
+docker build -t loki-kmeans-serve:v1 .
+docker images | grep loki-kmeans-serve
+```
+
+**Tester l'image localement :**
+```bash
+# Vérifier la version de MLflow dans l'image
+docker run --rm loki-kmeans-serve:v1 mlflow --version
+
+# Vérifier la commande par défaut de l'image
+docker inspect loki-kmeans-serve:v1 --format='{{.Config.Cmd}}'
+```
+
 ## Bonnes Pratiques de Production
 
 > [!WARNING]
