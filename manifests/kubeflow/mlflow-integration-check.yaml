@@ -1,0 +1,75 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: mlflow-integration-check
+  annotations:
+    pipelines.kubeflow.org/kfp_sdk_version: 2.14.4
+    pipelines.kubeflow.org/pipeline_compilation_time: '2025-01-08T00:00:00'
+    pipelines.kubeflow.org/pipeline_spec: '{"description":"Verify Kubeflow can connect to MLflow","name":"MLflow integration check"}'
+  labels:
+    pipelines.kubeflow.org/kfp_sdk_version: 2.14.4
+spec:
+  entrypoint: mlflow-integration-check
+  templates:
+  - name: check-mlflow-connection
+    inputs:
+      parameters:
+      - name: mlflow_tracking_uri
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 2.14.4
+        pipelines.kubeflow.org/enable_caching: "true"
+    container:
+      image: python:3.12-slim
+      command:
+      - sh
+      - -c
+      - |
+        pip install mlflow==2.17.2 boto3 && python3 - <<'EOF'
+        import mlflow
+        import sys
+        
+        mlflow_uri = "{{inputs.parameters.mlflow_tracking_uri}}"
+        print("=" * 60)
+        print("KUBEFLOW + MLFLOW INTEGRATION CHECK")
+        print("=" * 60)
+        print(f"MLflow URI: {mlflow_uri}")
+        print("")
+        
+        try:
+            mlflow.set_tracking_uri(mlflow_uri)
+            from mlflow.tracking import MlflowClient
+            client = MlflowClient()
+            
+            # List MLflow experiments only
+            experiments = client.search_experiments()
+            print(f"MLflow Experiments found: {len(experiments)}")
+            for exp in experiments[:5]:
+                print(f" - {exp.name} (ID: {exp.experiment_id})")
+                
+            print("\n" + "=" * 60)
+            print("RESULT: Kubeflow can successfully connect to MLflow!")
+            print("=" * 60)
+        except Exception as e:
+            print("=" * 60)
+            print("FAILED: Could not connect to MLflow")
+            print("=" * 60)
+            print(f"Error: {str(e)}")
+        EOF
+  - name: mlflow-integration-check
+    inputs:
+      parameters:
+      - name: mlflow_tracking_uri
+    dag:
+      tasks:
+      - name: check-mlflow-connection
+        template: check-mlflow-connection
+        arguments:
+          parameters:
+          - name: mlflow_tracking_uri
+            value: "{{inputs.parameters.mlflow_tracking_uri}}"
+  arguments:
+    parameters:
+    - name: mlflow_tracking_uri
+      value: "http://mlflow-service.default.svc.cluster.local:5000"
+  serviceAccountName: pipeline-runner

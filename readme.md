@@ -231,4 +231,29 @@ Pour la production, veuillez considérer :
 - **Réseau** : Utiliser un Ingress controller avec TLS pour sécuriser les accès (au lieu de `NodePort`).
 - **Haute disponibilité** : Utiliser MinIO en mode distribué ou une solution Cloud managée (AWS S3, GCP GCS).
 
+## 8. Déploiement de Kubeflow Pipelines (KFP)
 
+Kubeflow Pipelines (KFP) permet d'orchestrer, déployer et gérer des workflows de Machine Learning.
+
+L'environnement complet (CRDs, manifests, NodePort UI) est automatisé via un script dédié.
+
+**1. Lancer l'installation automatisée :**
+```bash
+chmod +x deploy_kubeflow.sh
+./deploy_kubeflow.sh
+```
+*(L'attente du démarrage des pods peut prendre de 5 à 10 minutes).*
+
+**2. Accéder à l'interface de Kubeflow (UI) :**
+L'interface est exposée sur le port `30502`. Ouvrez un tunnel SSH si vous êtes sur une machine EC2 distante :
+```bash
+ssh -i "C:\chemin\vers\votre_cle.pem" -L 30502:127.0.0.1:30502 ubuntu@<IP_PUBLIQUE_DE_VOTRE_EC2>
+```
+Accédez ensuite à l'UI via http://localhost:30502.
+
+**3. Tester l'intégration entre Kubeflow et MLflow :**
+Un workflow Argo de test a été préparé pour vérifier la connexion :
+```bash
+kubectl apply -f manifests/kubeflow/mlflow-integration-check.yaml
+```
+Vous pouvez suivre l'exécution de ce test directement depuis l'interface UI de Kubeflow.
