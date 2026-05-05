@@ -19,7 +19,7 @@ kubectl wait --for=condition=ready pod -l app=minio --timeout=120s
 ```
 
 **Accéder à l'UI MinIO :**
-Ouvrez `http://localhost:30901` (ou `http://<node-ip>:30901`).
+Ouvrez `http://localhost:9001` (ou `http://<node-ip>:9001`).
 - Username : `minioadmin`
 - Password : `minioadmin`
 
@@ -44,15 +44,15 @@ kubectl logs -l app=mlflow -f
 ```
 
 **Accéder à l'UI MLflow :**
-Ouvrez `http://localhost:30500` (ou `http://<node-ip>:30500`).
+Ouvrez `http://localhost:5002` (ou `http://<node-ip>:5002`).
 
 ## 3. Entraîner et promouvoir le modèle en Production
 
 Exportez les variables d'environnement pointant vers vos services K8s, puis lancez l'entraînement :
 
 ```bash
-export MLFLOW_TRACKING_URI="http://localhost:30500" # Ou http://mlflow-service:5000 dans le cluster
-export MLFLOW_S3_ENDPOINT_URL="http://localhost:30900" # Ou http://minio-service:9000 dans le cluster
+export MLFLOW_TRACKING_URI="http://localhost:5002" # Ou http://mlflow-service:5000 dans le cluster
+export MLFLOW_S3_ENDPOINT_URL="http://localhost:9000" # Ou http://minio-service:9000 dans le cluster
 export AWS_ACCESS_KEY_ID="minioadmin"
 export AWS_SECRET_ACCESS_KEY="minioadmin"
 
@@ -90,23 +90,23 @@ Voici les 2 étapes simples à suivre :
 Vous devez d'abord relayer les ports du cluster K8s vers le réseau local (localhost) de votre instance EC2. Tapez ces deux commandes (elles s'exécuteront en arrière-plan) :
 
 ```bash
-kubectl port-forward --address 127.0.0.1 svc/minio-service 30901:9001 &
-kubectl port-forward --address 127.0.0.1 svc/mlflow-service 30500:5000 &
+kubectl port-forward --address 127.0.0.1 svc/minio-service 9001:9001 &
+kubectl port-forward --address 127.0.0.1 svc/mlflow-service 5002:5000 &
 ```
 
 **Étape 2 : Sur votre machine locale (Windows)**
 Ouvrez un nouveau terminal (Invite de commandes ou PowerShell) sur votre propre ordinateur et connectez-vous à votre EC2 avec cette commande spéciale qui va lier les ports de l'EC2 à ceux de votre PC :
 
 ```bash
-ssh -i "C:\chemin\vers\votre_cle.pem" -L 30901:127.0.0.1:30901 -L 30500:127.0.0.1:30500 ubuntu@<IP_PUBLIQUE_DE_VOTRE_EC2>
+ssh -i "C:\chemin\vers\votre_cle.pem" -L 9001:127.0.0.1:9001 -L 5002:127.0.0.1:5002 ubuntu@<IP_PUBLIQUE_DE_VOTRE_EC2>
 ```
 *(Remplacez le chemin de la clé .pem et <IP_PUBLIQUE_DE_VOTRE_EC2> par vos vraies valeurs).*
 
 **Étape 3 : Sur votre navigateur Chrome**
 Tant que la fenêtre SSH de l'Étape 2 reste ouverte, votre tunnel fonctionne ! Ouvrez simplement Chrome sur votre ordinateur et allez sur :
 
-- **MinIO** : http://localhost:30901
-- **MLflow** : http://localhost:30500
+- **MinIO** : http://localhost:9001
+- **MLflow** : http://localhost:5002
 
 ## 3. Exécution du Job d'entraînement dans Kubernetes
 
@@ -153,7 +153,7 @@ kubectl logs -l app=training -f
 ## 4. Vérification dans MLflow UI
 
 Le script gère automatiquement l'enregistrement et la promotion en production !
-1. Ouvrez l'UI MLflow (`http://localhost:30500`).
+1. Ouvrez l'UI MLflow (`http://localhost:5002`).
 2. Allez à l'expérience **loki-prod** et vérifiez le nouveau *run*.
 3. Vous verrez que votre modèle `log-clustering-kmeans` a été automatiquement promu en `Production`.
 
@@ -231,27 +231,33 @@ Pour la production, veuillez considérer :
 - **Réseau** : Utiliser un Ingress controller avec TLS pour sécuriser les accès (au lieu de `NodePort`).
 - **Haute disponibilité** : Utiliser MinIO en mode distribué ou une solution Cloud managée (AWS S3, GCP GCS).
 
-## 8. Déploiement de Kubeflow Pipelines (KFP)
+## 8. Déploiement de la Stack MLOps complète (MinIO, MLflow, Kubeflow)
 
 Kubeflow Pipelines (KFP) permet d'orchestrer, déployer et gérer des workflows de Machine Learning.
+L'environnement complet (MinIO, MLflow, CRDs, manifests, NodePort UI) est automatisé via un script de déploiement global.
 
-L'environnement complet (CRDs, manifests, NodePort UI) est automatisé via un script dédié.
-
-**1. Lancer l'installation automatisée :**
+**1. Préparer les données d'entraînement :**
+Placez votre dataset `fitness_data.csv` dans le dossier local (par exemple `/root/code/data/`).
+Déployez ensuite le Volume Persistant (PV) et sa réservation (PVC) pour rendre les données accessibles à Kubeflow :
 ```bash
-chmod +x deploy_kubeflow.sh
-./deploy_kubeflow.sh
+kubectl apply -f manifests/data-pv.yaml
 ```
-*(L'attente du démarrage des pods peut prendre de 5 à 10 minutes).*
 
-**2. Accéder à l'interface de Kubeflow (UI) :**
+**2. Lancer l'installation automatisée de la Stack :**
+```bash
+chmod +x deploy_stack.sh
+./deploy_stack.sh
+```
+*(Le script déploie MinIO, crée le bucket, déploie MLflow, puis installe Kubeflow. L'attente du démarrage des pods peut prendre de 5 à 10 minutes).*
+
+**3. Accéder à l'interface de Kubeflow (UI) :**
 L'interface est exposée sur le port `30502`. Ouvrez un tunnel SSH si vous êtes sur une machine EC2 distante :
 ```bash
 ssh -i "C:\chemin\vers\votre_cle.pem" -L 30502:127.0.0.1:30502 ubuntu@<IP_PUBLIQUE_DE_VOTRE_EC2>
 ```
 Accédez ensuite à l'UI via http://localhost:30502.
 
-**3. Tester l'intégration entre Kubeflow et MLflow :**
+**4. Tester l'intégration entre Kubeflow et MLflow :**
 Un workflow Argo de test a été préparé pour vérifier la connexion :
 ```bash
 kubectl apply -f manifests/kubeflow/mlflow-integration-check.yaml

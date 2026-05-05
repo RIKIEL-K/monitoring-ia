@@ -71,5 +71,5 @@ spec:
   arguments:
     parameters:
     - name: mlflow_tracking_uri
-      value: "http://mlflow-service.default.svc.cluster.local:5000"
+      value: "http://mlflow-service.default.svc.cluster.local:5002"
   serviceAccountName: pipeline-runner

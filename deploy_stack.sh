@@ -1,0 +1,74 @@
+#!/bin/bash
+set -e
+echo ""
+echo "====================================================="
+echo "Starting installation of MinIO, MLflow, and Kubeflow"
+echo "====================================================="
+echo ""
+
+########################################
+# MinIO Setup
+########################################
+echo "Deploying MinIO..."
+# Utilisation du chemin relatif (adapté par rapport à /root/.minio-deployment.yaml)
+kubectl apply -f manifests/minio-deployment.yaml
+kubectl apply -f manifests/minio-service.yaml
+
+echo "Waiting for MinIO pod to become Ready..."
+kubectl wait --for=condition=Ready pod -l app=minio --timeout=180s
+MINIO_POD=$(kubectl get pods -l app=minio -o jsonpath='{.items[0].metadata.name}')
+echo "MinIO pod is ready: $MINIO_POD"
+
+echo "Creating 'mlartifacts' bucket in MinIO..."
+kubectl exec "$MINIO_POD" -- mc alias set local http://127.0.0.1:9000 minioadmin minioadmin >/dev/null 2>&1
+kubectl exec "$MINIO_POD" -- sh -c "mc mb local/mlartifacts || true"
+echo "Bucket 'mlartifacts' verified/created."
+echo ""
+
+########################################
+# MLflow Setup
+########################################
+echo "Deploying MLflow..."
+# Utilisation du chemin relatif
+kubectl apply -f manifests/mlflow-deployment.yaml
+kubectl apply -f manifests/mlflow-service.yaml
+
+echo "Waiting for MLflow pod to be created..."
+sleep 5 # initial delay to allow pod to appear
+MLFLOW_POD=""
+until [[ -n "$MLFLOW_POD" ]]; do
+  MLFLOW_POD=$(kubectl get pods -l app=mlflow -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+  [[ -n "$MLFLOW_POD" ]] || { echo " ...waiting for MLflow pod to be created"; sleep 3; }
+done
+
+echo "Waiting for MLflow pod to become Ready..."
+kubectl wait --for=condition=Ready pod/"$MLFLOW_POD" --timeout=180s
+echo "MLflow pod is ready: $MLFLOW_POD"
+echo ""
+
+########################################
+# Kubeflow Pipelines Setup
+########################################
+echo "Installing Kubeflow Pipelines..."
+export PIPELINE_VERSION=2.14.4
+
+echo "Applying cluster-scoped resources..."
+kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/cluster-scoped-resources?ref=$PIPELINE_VERSION"
+
+echo "Waiting for Applications CRD to become established..."
+kubectl wait --for condition=established --timeout=60s crd/applications.app.k8s.io
+
+echo "Applying Kubeflow Pipelines components..."
+kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/platform-agnostic?ref=$PIPELINE_VERSION"
+
+echo "Waiting for Kubeflow Pipeline pods to become Ready (this may take several minutes)..."
+kubectl wait pods -l application-crd-id=kubeflow-pipelines -n kubeflow --for condition=Ready --timeout=600s || echo "Certains pods prennent plus de temps..."
+
+echo "Applying UI NodePort patch..."
+kubectl apply -f manifests/kubeflow/kfp-ui-nodeport-patch.yaml
+
+echo ""
+echo "====================================="
+echo "Installation completed successfully."
+echo "====================================="
+echo ""
