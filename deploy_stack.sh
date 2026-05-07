@@ -38,8 +38,9 @@ echo "Waiting for MLflow pod to be created..."
 sleep 5 # initial delay to allow pod to appear
 MLFLOW_POD=""
 until [[ -n "$MLFLOW_POD" ]]; do
+  echo " ...waiting for MLflow pod to be created"
+  sleep 3
   MLFLOW_POD=$(kubectl get pods -l app=mlflow -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-  [[ -n "$MLFLOW_POD" ]] || { echo " ...waiting for MLflow pod to be created"; sleep 3; }
 done
 
 echo "Waiting for MLflow pod to become Ready..."
