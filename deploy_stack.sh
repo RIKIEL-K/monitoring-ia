@@ -53,14 +53,8 @@ echo ""
 ########################################
 echo "Installing Kubeflow Pipelines..."
 export PIPELINE_VERSION=2.15.0
-
-echo "Applying cluster-scoped resources..."
 kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/cluster-scoped-resources?ref=$PIPELINE_VERSION"
-
-echo "Waiting for Applications CRD to become established..."
 kubectl wait --for condition=established --timeout=60s crd/applications.app.k8s.io
-
-echo "Applying Kubeflow Pipelines components (env/dev)..."
 kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/dev?ref=$PIPELINE_VERSION"
 
 # 💡 Troubleshooting : si des pods (proxy-agent, workflow-controller) crashent en boucle,
