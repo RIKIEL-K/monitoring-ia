@@ -57,10 +57,6 @@ kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/cluster-scop
 kubectl wait --for condition=established --timeout=60s crd/applications.app.k8s.io
 kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/dev?ref=$PIPELINE_VERSION"
 
-# 💡 Troubleshooting : si des pods (proxy-agent, workflow-controller) crashent en boucle,
-# utiliser platform-agnostic à la place (vérifié sur Minikube v2.0.0+, cf. kubeflow/pipelines#9546) :
-#   kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/platform-agnostic?ref=$PIPELINE_VERSION"
-
 echo "Waiting for Kubeflow Pipeline pods to become Ready (this may take several minutes)..."
 kubectl wait pods -l application-crd-id=kubeflow-pipelines -n kubeflow --for condition=Ready --timeout=600s || echo "Certains pods prennent plus de temps..."
 
