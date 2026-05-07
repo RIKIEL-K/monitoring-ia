@@ -1,0 +1,105 @@
+---
+# ============================================================
+# mysql-fix.yaml — Fix complet MySQL pour Kubeflow
+# ============================================================
+# Résout 2 problèmes combinés :
+#   1. CrashLoopBackOff de metadata-grpc : incompatibilité
+#      MySQL 8.0 / MLMD (caching_sha2_password vs mysql_native_password)
+#   2. Perte de la base mlpipeline : MySQL utilise emptyDir par
+#      défaut → données effacées à chaque restart du pod
+#
+# Application (Kubeflow déjà lancé) :
+#   kubectl apply -f manifests/kubeflow/mysql-fix.yaml
+#   kubectl patch deployment mysql -n kubeflow \
+#     --patch-file manifests/kubeflow/mysql-fix.yaml
+#   kubectl rollout status deployment/mysql -n kubeflow --timeout=120s
+#   kubectl rollout restart deployment/metadata-grpc-deployment \
+#     deployment/ml-pipeline deployment/ml-pipeline-persistenceagent \
+#     deployment/ml-pipeline-scheduledworkflow \
+#     deployment/workflow-controller -n kubeflow
+# ============================================================
+
+# ── 1. ConfigMap : script SQL exécuté automatiquement par MySQL
+#       au 1er démarrage si /var/lib/mysql est vide.
+#       Crée mlpipeline + fixe l'auth plugin pour MLMD.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init-script
+  namespace: kubeflow
+data:
+  init.sql: |
+    CREATE DATABASE IF NOT EXISTS mlpipeline
+      CHARACTER SET utf8mb4
+      COLLATE utf8mb4_unicode_ci;
+    ALTER USER 'root'@'%'         IDENTIFIED WITH mysql_native_password BY '';
+    ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '';
+    FLUSH PRIVILEGES;
+---
+# ── 2. PersistentVolume : stockage sur le nœud Minikube.
+#       /var/lib/kubeflow-mysql est créé automatiquement si absent.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: kubeflow-mysql-pv
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /var/lib/kubeflow-mysql
+    type: DirectoryOrCreate
+---
+# ── 3. PersistentVolumeClaim : réservation du PV pour MySQL.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kubeflow-mysql-pvc
+  namespace: kubeflow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  volumeName: kubeflow-mysql-pv
+  storageClassName: ""
+---
+# ── 4. Strategic Merge Patch du deployment MySQL.
+#       NE PAS appliquer avec kubectl apply — utiliser kubectl patch.
+#       Voir les instructions en haut du fichier.
+#
+#       Ce patch fait 3 choses :
+#         a) --default-authentication-plugin=mysql_native_password
+#            → fix permanent auth MySQL 8.0 / MLMD
+#         b) Remplace emptyDir par kubeflow-mysql-pvc
+#            → données persistantes entre redémarrages
+#         c) Monte init.sql dans /docker-entrypoint-initdb.d/
+#            → mlpipeline recréée automatiquement si volume vide
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: kubeflow
+spec:
+  template:
+    spec:
+      containers:
+        - name: mysql
+          args:
+            - --default-authentication-plugin=mysql_native_password
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+            - name: mysql-init-script
+              mountPath: /docker-entrypoint-initdb.d/init.sql
+              subPath: init.sql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: kubeflow-mysql-pvc
+        - name: mysql-init-script
+          configMap:
+            name: mysql-init-script
