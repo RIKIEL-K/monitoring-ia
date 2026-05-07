@@ -28,7 +28,7 @@ spec:
             --backend-store-uri sqlite:////mlflow/mlflow.db \
             --default-artifact-root s3://mlartifacts/ \
             --cors-allowed-origins "*" \
-            --allowed-hosts "mlflow-service:*,localhost:*,127.0.0.1:*"
+            --allowed-hosts "*"
         env:
         - name: MLFLOW_S3_ENDPOINT_URL
           value: "http://minio-service:9000"

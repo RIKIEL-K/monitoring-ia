@@ -20,8 +20,9 @@ MINIO_POD=$(kubectl get pods -l app=minio -o jsonpath='{.items[0].metadata.name}
 echo "MinIO pod is ready: $MINIO_POD"
 
 echo "Creating 'mlartifacts' bucket in MinIO..."
-kubectl exec "$MINIO_POD" -- mc alias set local http://127.0.0.1:9000 minioadmin minioadmin >/dev/null 2>&1
-kubectl exec "$MINIO_POD" -- sh -c "mc mb local/mlartifacts || true"
+MINIO_NODE_IP=$(minikube ip)
+mc alias set local http://${MINIO_NODE_IP}:30900 minioadmin minioadmin >/dev/null 2>&1
+mc mb local/mlartifacts || true
 echo "Bucket 'mlartifacts' verified/created."
 echo ""
 
