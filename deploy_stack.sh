@@ -11,8 +11,8 @@ echo ""
 ########################################
 echo "Deploying MinIO..."
 # Utilisation du chemin relatif (adapté par rapport à /root/.minio-deployment.yaml)
-kubectl apply -f manifests/minio-deployment.yaml
-kubectl apply -f manifests/minio-service.yaml
+kubectl apply --validate=false -f manifests/minio-deployment.yaml
+kubectl apply --validate=false -f manifests/minio-service.yaml
 
 echo "Waiting for MinIO pod to become Ready..."
 kubectl wait --for=condition=Ready pod -l app=minio --timeout=180s
@@ -31,8 +31,8 @@ echo ""
 ########################################
 echo "Deploying MLflow..."
 # Utilisation du chemin relatif
-kubectl apply -f manifests/mlflow-deployment.yaml
-kubectl apply -f manifests/mlflow-service.yaml
+kubectl apply --validate=false -f manifests/mlflow-deployment.yaml
+kubectl apply --validate=false -f manifests/mlflow-service.yaml
 
 echo "Waiting for MLflow pod to be created..."
 sleep 5 # initial delay to allow pod to appear
@@ -55,19 +55,19 @@ echo "Installing Kubeflow Pipelines..."
 export PIPELINE_VERSION=2.14.4
 
 echo "Applying cluster-scoped resources..."
-kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/cluster-scoped-resources?ref=$PIPELINE_VERSION"
+kubectl apply --validate=false -k "github.com/kubeflow/pipelines/manifests/kustomize/cluster-scoped-resources?ref=$PIPELINE_VERSION"
 
 echo "Waiting for Applications CRD to become established..."
 kubectl wait --for condition=established --timeout=60s crd/applications.app.k8s.io
 
 echo "Applying Kubeflow Pipelines components..."
-kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/platform-agnostic?ref=$PIPELINE_VERSION"
+kubectl apply --validate=false -k "github.com/kubeflow/pipelines/manifests/kustomize/env/platform-agnostic?ref=$PIPELINE_VERSION"
 
 echo "Waiting for Kubeflow Pipeline pods to become Ready (this may take several minutes)..."
 kubectl wait pods -l application-crd-id=kubeflow-pipelines -n kubeflow --for condition=Ready --timeout=600s || echo "Certains pods prennent plus de temps..."
 
 echo "Applying UI NodePort patch..."
-kubectl apply -f manifests/kubeflow/kfp-ui-nodeport-patch.yaml
+kubectl apply --validate=false -f manifests/kubeflow/kfp-ui-nodeport-patch.yaml
 
 echo ""
 echo "====================================="
