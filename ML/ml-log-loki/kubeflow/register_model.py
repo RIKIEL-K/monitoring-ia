@@ -45,7 +45,7 @@ def register_model(
     import os
 
     print("=" * 70)
-    print("  📦 Model Registration Component")
+    print("  [Register] Model Registration Component")
     print("=" * 70)
 
     # ── 1. Configure MLflow and MinIO environment variables ──────────
@@ -68,7 +68,7 @@ def register_model(
     print(f"Registering model as: {model_name}")
     result = mlflow.register_model(model_uri, model_name)
 
-    print(f"\n✅ Model registered successfully!")
+    print(f"\n[SUCCESS] Model registered successfully!")
     print(f"   Name    : {model_name}")
     print(f"   Version : {result.version}")
     print(f"   Run ID  : {run_id}")

@@ -86,7 +86,7 @@ def train_model(
     warnings.filterwarnings("ignore")
 
     print("=" * 70)
-    print("  🤖 Log Clustering Pipeline — TF-IDF + K-Means + MLflow")
+    print("  [Model] Log Clustering Pipeline - TF-IDF + K-Means + MLflow")
     print("=" * 70)
 
     # ── 1. Configure MLflow tracking URI ──────────────────────────────
@@ -399,7 +399,7 @@ def train_model(
         run_id = run.info.run_id
 
         print("\n" + "=" * 70)
-        print("  ✅ TRAINING COMPLETE")
+        print("  [SUCCESS] TRAINING COMPLETE")
         print("=" * 70)
         print(f"  Total logs processed  : {len(df):,}")
         print(f"  Clusters identified   : {kmeans_model.n_clusters}")
