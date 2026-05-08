@@ -8,7 +8,7 @@ spec:
   accessModes:
   - ReadWriteOnce
   hostPath:
-    path: /home/ubuntu/monitoring-ia/ml/ml-log-loki/datasets
+    path: /home/ubuntu/monitoring-ia/ML/ml-log-loki/datasets
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
