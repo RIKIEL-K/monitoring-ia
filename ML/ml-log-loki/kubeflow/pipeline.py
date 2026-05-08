@@ -73,6 +73,14 @@ def log_clustering_pipeline(
         k_range=k_range,
         model_name=model_name,
     )
+    
+    # Mount PVC to the training task
+    from kfp import kubernetes
+    kubernetes.mount_pvc(
+        train_task,
+        pvc_name="data-pv",
+        mount_path="/data",
+    )
 
     # ── Step 2 : Enregistrement dans le Model Registry ───────────────
     # register_model reçoit le run_id retourné par train_model

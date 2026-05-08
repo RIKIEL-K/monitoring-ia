@@ -24,3 +24,4 @@ boto3==1.35.0
 
 matplotlib==3.9.2
 kfp==2.7.0
+kfp-kubernetes==1.1.0
