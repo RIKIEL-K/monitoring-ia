@@ -78,7 +78,7 @@ def log_clustering_pipeline(
     from kfp import kubernetes
     kubernetes.mount_pvc(
         train_task,
-        pvc_name="data-pv",
+        pvc_name="training-data-pvc",
         mount_path="/data",
     )
 
