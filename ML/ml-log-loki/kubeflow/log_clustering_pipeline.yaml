@@ -602,5 +602,5 @@ platforms:
       executors:
         exec-train-model:
           pvcMount:
-          - constant: data-pv
+          - constant: training-data-pvc
             mountPath: /data
