@@ -431,3 +431,54 @@ Loki (nouveaux logs)
 
 > [!WARNING]
 > La promotion de stage (Staging → Production) est volontairement **manuelle** dans ce pipeline. Utilisez l'UI MLflow (`http://localhost:30500`) pour promouvoir une version après validation humaine.
+
+## 10. Dépannage : Erreurs courantes Kubeflow Pipelines
+
+### A. Pod bloqué avec `Init:CreateContainerConfigError` (Erreur `runAsNonRoot`)
+**Symptôme :** Le pipeline ne démarre pas et `kubectl describe pod <pod-name> -n kubeflow` affiche :
+`Error: container has runAsNonRoot and image will run as root`
+
+**Cause :** Kubernetes bloque le conteneur interne d'Argo (`argoexec`) car il tente de se lancer avec les droits "root", ce qui viole la politique de sécurité de Kubeflow.
+
+**Solution :** Forcer l'exécuteur Argo à utiliser un utilisateur standard (8737) en appliquant ce correctif :
+```bash
+cat << 'EOF' | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workflow-controller-configmap
+  namespace: kubeflow
+data:
+  artifactRepository: |
+    archiveLogs: true
+    s3:
+      endpoint: "minio-service.kubeflow:9000"
+      bucket: "mlpipeline"
+      keyFormat: "private-artifacts/{{workflow.namespace}}/{{workflow.name}}/{{workflow.creationTimestamp.Y}}/{{workflow.creationTimestamp.m}}/{{workflow.creationTimestamp.d}}/{{pod.name}}"
+      insecure: true
+      accessKeySecret:
+        name: mlpipeline-minio-artifact
+        key: accesskey
+      secretKeySecret:
+        name: mlpipeline-minio-artifact
+        key: secretkey
+  executor: |
+    imagePullPolicy: IfNotPresent
+    securityContext:
+      runAsUser: 8737
+      runAsNonRoot: true
+EOF
+
+kubectl rollout restart deployment workflow-controller -n kubeflow
+```
+*Note : Si vous aviez configuré `containerRuntimeExecutor: emissary` manuellement, supprimez-le car il n'est plus supporté dans les versions récentes d'Argo (v3.4+).*
+
+### B. Erreur "Cannot find context" ou "Conversion from collation utf8mb3..." (Erreur 3988)
+**Symptôme :** Lors de la création d'un Run, l'interface affiche une erreur interne `InternalServerError` avec un code d'erreur 3988 ou 1366, et les étapes du pipeline sont introuvables (`Cannot find context`).
+
+**Cause :** La base de données MySQL est configurée en `utf8mb3` (pour des raisons de compatibilité d'authentification avec Kubeflow) mais le code de votre composant Python contient des **émojis** (ex: 📦, 🤖, ✅). Le code source des composants étant stocké dans la base MySQL (dans le `PipelineRuntimeManifest`), la présence de caractères sur 4 octets fait planter la base de données.
+
+**Solution :**
+1. **Supprimez tous les émojis** ou caractères spéciaux sur 4 octets de vos fichiers Python (`train_model.py`, `register_model.py`, `pipeline.py`).
+2. Recompilez le pipeline (`python pipeline.py`).
+3. Créez un NOUVEAU Run dans l'interface avec le nouveau fichier YAML compilé.

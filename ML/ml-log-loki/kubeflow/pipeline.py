@@ -28,8 +28,8 @@ from register_model import register_model
 )
 def log_clustering_pipeline(
     # MLflow configuration
-    mlflow_tracking_uri: str = "http://mlflow-service:5000",
-    minio_endpoint: str = "http://minio-service:9000",
+    mlflow_tracking_uri: str = "http://mlflow-service.default.svc.cluster.local:5000",
+    minio_endpoint: str = "http://minio-service.default.svc.cluster.local:9000",
     aws_access_key: str = "minioadmin",
     aws_secret_key: str = "minioadmin",
     experiment_name: str = "log-clustering-loki",
