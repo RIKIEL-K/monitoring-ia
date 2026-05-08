@@ -89,7 +89,7 @@ def log_clustering_pipeline(
         minio_endpoint=minio_endpoint,
         aws_access_key=aws_access_key,
         aws_secret_key=aws_secret_key,
-        run_id=train_task.output,
+        run_id=train_task.outputs['Output'],
         model_name=model_name,
     )
 
