@@ -52,10 +52,10 @@ echo ""
 # Kubeflow Pipelines Setup
 ########################################
 echo "Installing Kubeflow Pipelines..."
-export PIPELINE_VERSION=2.4.0
+export PIPELINE_VERSION=2.15.0
 kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/cluster-scoped-resources?ref=$PIPELINE_VERSION"
 kubectl wait --for condition=established --timeout=60s crd/applications.app.k8s.io
-kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/dev?ref=$PIPELINE_VERSION"
+kubectl apply -k manifests/kfp-overlay
 
 echo "Waiting for Kubeflow Pipeline pods to become Ready (this may take several minutes)..."
 kubectl wait pods -l application-crd-id=kubeflow-pipelines -n kubeflow --for condition=Ready --timeout=600s || echo "Certains pods prennent plus de temps..."
