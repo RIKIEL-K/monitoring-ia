@@ -101,5 +101,5 @@ if __name__ == "__main__":
         pipeline_func=log_clustering_pipeline,
         package_path=output_file,
     )
-    print(f"✅ Pipeline compilé : {output_file}")
+    print(f"[SUCCESS] Pipeline compilé : {output_file}")
     print("   Soumettez ce fichier à Kubeflow Pipelines pour exécution.")
