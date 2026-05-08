@@ -142,7 +142,7 @@ deploymentSpec:
           \ (as string)\n    \"\"\"\n    # \u2500\u2500 Imports (self-contained for\
           \ KFP container isolation) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\n    import mlflow\n    import os\n\n    print(\"=\" * 70)\n\
-          \    print(\"  \U0001F4E6 Model Registration Component\")\n    print(\"\
+          \    print(\"  [Register] Model Registration Component\")\n    print(\"\
           =\" * 70)\n\n    # \u2500\u2500 1. Configure MLflow and MinIO environment\
           \ variables \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \n    mlflow.set_tracking_uri(mlflow_tracking_uri)\n\n    os.environ[\"\
@@ -162,7 +162,7 @@ deploymentSpec:
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\n    print(f\"Registering model as:\
           \ {model_name}\")\n    result = mlflow.register_model(model_uri, model_name)\n\
-          \n    print(f\"\\n\u2705 Model registered successfully!\")\n    print(f\"\
+          \n    print(f\"\\n[SUCCESS] Model registered successfully!\")\n    print(f\"\
           \   Name    : {model_name}\")\n    print(f\"   Version : {result.version}\"\
           )\n    print(f\"   Run ID  : {run_id}\")\n    print(\"=\" * 70)\n\n    #\
           \ \u2500\u2500 4. Return model version \u2500\u2500\u2500\u2500\u2500\u2500\
@@ -228,11 +228,11 @@ deploymentSpec:
           \ import infer_signature\n    import pandas as pd\n    import numpy as np\n\
           \    import os\n    import re\n    import joblib\n    import warnings\n\n\
           \    warnings.filterwarnings(\"ignore\")\n\n    print(\"=\" * 70)\n    print(\"\
-          \  \U0001F916 Log Clustering Pipeline \u2014 TF-IDF + K-Means + MLflow\"\
-          )\n    print(\"=\" * 70)\n\n    # \u2500\u2500 1. Configure MLflow tracking\
-          \ URI \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+          \  [Model] Log Clustering Pipeline - TF-IDF + K-Means + MLflow\")\n    print(\"\
+          =\" * 70)\n\n    # \u2500\u2500 1. Configure MLflow tracking URI \u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
-          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    mlflow.set_tracking_uri(mlflow_tracking_uri)\n\
+          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+          \u2500\u2500\u2500\u2500\n    mlflow.set_tracking_uri(mlflow_tracking_uri)\n\
           \    print(f\"MLflow tracking URI: {mlflow_tracking_uri}\")\n\n    # \u2500\
           \u2500 2. Configure MinIO environment variables \u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
@@ -453,18 +453,19 @@ deploymentSpec:
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\n        run_id = run.info.run_id\n\n   \
-          \     print(\"\\n\" + \"=\" * 70)\n        print(\"  \u2705 TRAINING COMPLETE\"\
-          )\n        print(\"=\" * 70)\n        print(f\"  Total logs processed  :\
-          \ {len(df):,}\")\n        print(f\"  Clusters identified   : {kmeans_model.n_clusters}\"\
-          )\n        print(f\"  TF-IDF vocabulary     : {len(feature_names)} terms\"\
-          )\n        print(f\"  Silhouette score      : {sil_score:.3f}\")\n     \
-          \   print(f\"  Inertia               : {kmeans_model.inertia_:.0f}\")\n\
-          \        print(f\"  MLflow experiment     : {experiment_name}\")\n     \
-          \   print(f\"  MLflow run ID         : {run_id}\")\n        print(\"=\"\
-          \ * 70)\n\n        # \u2500\u2500 14. Return the MLflow run_id \u2500\u2500\
+          \     print(\"\\n\" + \"=\" * 70)\n        print(\"  [SUCCESS] TRAINING\
+          \ COMPLETE\")\n        print(\"=\" * 70)\n        print(f\"  Total logs\
+          \ processed  : {len(df):,}\")\n        print(f\"  Clusters identified  \
+          \ : {kmeans_model.n_clusters}\")\n        print(f\"  TF-IDF vocabulary \
+          \    : {len(feature_names)} terms\")\n        print(f\"  Silhouette score\
+          \      : {sil_score:.3f}\")\n        print(f\"  Inertia               :\
+          \ {kmeans_model.inertia_:.0f}\")\n        print(f\"  MLflow experiment \
+          \    : {experiment_name}\")\n        print(f\"  MLflow run ID         :\
+          \ {run_id}\")\n        print(\"=\" * 70)\n\n        # \u2500\u2500 14. Return\
+          \ the MLflow run_id \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
-          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
-          \u2500\u2500\u2500\n        return run_id\n\n"
+          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n        return run_id\n\
+          \n"
         image: python:3.7
 pipelineInfo:
   description: "Pipeline de clustering de logs Loki avec TF-IDF + K-Means. Entra\xEE\
