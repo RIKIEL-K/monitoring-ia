@@ -482,3 +482,35 @@ kubectl rollout restart deployment workflow-controller -n kubeflow
 1. **Supprimez tous les émojis** ou caractères spéciaux sur 4 octets de vos fichiers Python (`train_model.py`, `register_model.py`, `pipeline.py`).
 2. Recompilez le pipeline (`python pipeline.py`).
 3. Créez un NOUVEAU Run dans l'interface avec le nouveau fichier YAML compilé.
+
+### C. Suppression bloquée d'un volume persistant (PVC / PV)
+**Symptôme :** La commande `kubectl delete pvc ...` reste bloquée indéfiniment ou refuse de mettre à jour le chemin `hostPath`.
+
+**Cause :** Kubernetes place un cadenas de sécurité (`finalizer`) sur les volumes lorsqu'il pense qu'un pod l'utilise encore (même si le pod a planté).
+
+**Solution :** Forcer la suppression du cadenas de sécurité et supprimer le volume brutalement :
+```bash
+# 1. Faire sauter le cadenas du PVC et le supprimer
+kubectl patch pvc training-data-pvc -n kubeflow -p '{"metadata":{"finalizers":null}}'
+kubectl delete pvc training-data-pvc -n kubeflow --grace-period=0 --force
+
+# 2. Faire sauter le cadenas du PV et le supprimer
+kubectl patch pv training-data-pv -p '{"metadata":{"finalizers":null}}'
+kubectl delete pv training-data-pv --grace-period=0 --force
+
+# 3. Recréer le volume proprement
+kubectl apply -f manifests/data-pv.yaml
+```
+
+### D. Erreur "FileNotFoundError: [Errno 2] No such file or directory: '/data/...'"
+**Symptôme :** Le pipeline démarre bien et communique avec MLflow, mais l'étape d'entraînement échoue rapidement. Les logs du pod (accessibles via l'interface ou avec `kubectl logs`) affichent une erreur Python indiquant que le fichier de données est introuvable.
+
+**Cause :** Le cluster Minikube tourne dans un environnement isolé (conteneur Docker ou VM). Même si le PersistentVolume est configuré avec un `hostPath` pointant vers `/home/ubuntu/...`, ce chemin n'existe pas ou est vide à l'intérieur de Minikube car le dossier de l'EC2 n'est pas partagé avec lui.
+
+**Solution :**
+1. Créez un pont (mount) entre le système de fichiers de l'EC2 et Minikube en exécutant cette commande en tâche de fond :
+   ```bash
+   minikube mount /home/ubuntu/monitoring-ia:/home/ubuntu/monitoring-ia &
+   ```
+2. Attendez quelques secondes que le message de succès s'affiche, puis appuyez sur `Entrée` pour reprendre la main.
+3. Relancez l'exécution du pipeline sur l'interface Kubeflow.
