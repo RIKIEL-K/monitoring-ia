@@ -10,8 +10,8 @@
 #    max_df: float [Default: 0.95]
 #    max_features: int [Default: 100.0]
 #    min_df: int [Default: 2.0]
-#    minio_endpoint: str [Default: 'http://minio-service:9000']
-#    mlflow_tracking_uri: str [Default: 'http://mlflow-service:5000']
+#    minio_endpoint: str [Default: 'http://minio-service.default.svc.cluster.local:9000']
+#    mlflow_tracking_uri: str [Default: 'http://mlflow-service.default.svc.cluster.local:5000']
 #    model_name: str [Default: 'log-clustering-kmeans']
 #    n_clusters: int [Default: 5.0]
 #    n_init: int [Default: 10.0]
@@ -571,11 +571,11 @@ root:
         isOptional: true
         parameterType: NUMBER_INTEGER
       minio_endpoint:
-        defaultValue: http://minio-service:9000
+        defaultValue: http://minio-service.default.svc.cluster.local:9000
         isOptional: true
         parameterType: STRING
       mlflow_tracking_uri:
-        defaultValue: http://mlflow-service:5000
+        defaultValue: http://mlflow-service.default.svc.cluster.local:5000
         isOptional: true
         parameterType: STRING
       model_name:
