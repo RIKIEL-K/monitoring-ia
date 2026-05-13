@@ -116,7 +116,7 @@ components:
           description: MLflow tracking server URL
           parameterType: STRING
         model_name:
-          description: Name for the PyFunc model artifact path
+          description: "Nom du mod\xE8le PyFunc dans MLflow"
           parameterType: STRING
         n_clusters:
           description: Number of K-Means clusters
@@ -128,11 +128,6 @@ components:
           description: Random seed for reproducibility
           parameterType: NUMBER_INTEGER
     outputDefinitions:
-      artifacts:
-        model:
-          artifactType:
-            schemaTitle: system.Model
-            schemaVersion: 0.0.1
       parameters:
         Output:
           parameterType: STRING
@@ -328,35 +323,33 @@ deploymentSpec:
           \ str,\n    # TF-IDF hyperparameters\n    max_features: int,\n    min_df:\
           \ int,\n    max_df: float,\n    # K-Means hyperparameters\n    n_clusters:\
           \ int,\n    n_init: int,\n    random_state: int,\n    # Evaluation\n   \
-          \ k_range: str,\n    # Model naming\n    model_name: str,\n    # Output\
-          \ artifact\n    model: Output[Model],\n) -> str:\n    \"\"\"\n    Train\
-          \ a TF-IDF + K-Means log clustering pipeline.\n\n    Loads Loki log data,\
-          \ cleans messages, extracts patterns,\n    vectorizes with TF-IDF, clusters\
-          \ with K-Means, labels clusters,\n    and logs everything to MLflow (params,\
-          \ metrics, PyFunc model).\n\n    Args:\n        mlflow_tracking_uri: MLflow\
-          \ tracking server URL\n        minio_endpoint: MinIO S3 endpoint for artifact\
-          \ storage\n        aws_access_key: MinIO access key\n        aws_secret_key:\
-          \ MinIO secret key\n        experiment_name: Name of the MLflow experiment\n\
-          \        data_path: Path to the CSV log dataset\n        max_features: Max\
-          \ number of TF-IDF features\n        min_df: Minimum document frequency\
-          \ for TF-IDF\n        max_df: Maximum document frequency for TF-IDF\n  \
-          \      n_clusters: Number of K-Means clusters\n        n_init: Number of\
-          \ K-Means initializations\n        random_state: Random seed for reproducibility\n\
-          \        k_range: Comma-separated k values to evaluate (e.g. \"3,5,8,10\"\
-          )\n        model_name: Name for the PyFunc model artifact path\n       \
-          \ model: Kubeflow pipeline output artifact\n\n    Returns:\n        run_id:\
-          \ MLflow run ID for downstream components\n    \"\"\"\n    # \u2500\u2500\
-          \ Imports (self-contained for KFP container isolation) \u2500\u2500\u2500\
-          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    import mlflow\n    import\
-          \ mlflow.sklearn\n    import mlflow.pyfunc\n    from mlflow.models.signature\
-          \ import infer_signature\n    import pandas as pd\n    import numpy as np\n\
-          \    import os\n    import re\n    import joblib\n    import warnings\n\n\
-          \    warnings.filterwarnings(\"ignore\")\n\n    print(\"=\" * 70)\n    print(\"\
-          \  [Model] Log Clustering Pipeline - TF-IDF + K-Means + MLflow\")\n    print(\"\
-          =\" * 70)\n\n    # \u2500\u2500 1. Configure MLflow tracking URI \u2500\u2500\
+          \ k_range: str,\n    # Model naming\n    model_name: str,\n) -> str:\n \
+          \   \"\"\"\n    Train a TF-IDF + K-Means log clustering pipeline.\n\n  \
+          \  Loads Loki log data, cleans messages, extracts patterns,\n    vectorizes\
+          \ with TF-IDF, clusters with K-Means, labels clusters,\n    and logs everything\
+          \ to MLflow (params, metrics, PyFunc model).\n\n    Args:\n        mlflow_tracking_uri:\
+          \ MLflow tracking server URL\n        minio_endpoint: MinIO S3 endpoint\
+          \ for artifact storage\n        aws_access_key: MinIO access key\n     \
+          \   aws_secret_key: MinIO secret key\n        experiment_name: Name of the\
+          \ MLflow experiment\n        data_path: Path to the CSV log dataset\n  \
+          \      max_features: Max number of TF-IDF features\n        min_df: Minimum\
+          \ document frequency for TF-IDF\n        max_df: Maximum document frequency\
+          \ for TF-IDF\n        n_clusters: Number of K-Means clusters\n        n_init:\
+          \ Number of K-Means initializations\n        random_state: Random seed for\
+          \ reproducibility\n        k_range: Comma-separated k values to evaluate\
+          \ (e.g. \"3,5,8,10\")\n        model_name: Nom du mod\xE8le PyFunc dans\
+          \ MLflow\n\n    Returns:\n        run_id: MLflow run ID for downstream components\n\
+          \    \"\"\"\n    # \u2500\u2500 Imports (self-contained for KFP container\
+          \ isolation) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+          \n    import mlflow\n    import mlflow.sklearn\n    import mlflow.pyfunc\n\
+          \    from mlflow.models.signature import infer_signature\n    import pandas\
+          \ as pd\n    import numpy as np\n    import os\n    import re\n    import\
+          \ warnings\n\n    warnings.filterwarnings(\"ignore\")\n\n    print(\"=\"\
+          \ * 70)\n    print(\"  [Model] Log Clustering Pipeline - TF-IDF + K-Means\
+          \ + MLflow\")\n    print(\"=\" * 70)\n\n    # \u2500\u2500 1. Configure\
+          \ MLflow tracking URI \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
-          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
-          \u2500\u2500\u2500\u2500\n    mlflow.set_tracking_uri(mlflow_tracking_uri)\n\
+          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    mlflow.set_tracking_uri(mlflow_tracking_uri)\n\
           \    print(f\"MLflow tracking URI: {mlflow_tracking_uri}\")\n\n    # \u2500\
           \u2500 2. Configure MinIO environment variables \u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
@@ -575,16 +568,15 @@ deploymentSpec:
           \                vectorizer, kmeans_model, cluster_labels_map\n        \
           \    ),\n            signature=signature,\n            input_example=input_example,\n\
           \        )\n        print(\"  PyFunc pipeline model logged to MLflow artifact\
-          \ store\")\n\n        # \u2500\u2500 13. Save model as Kubeflow pipeline\
-          \ artifact \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
-          \u2500\u2500\n        joblib.dump(kmeans_model, model.path)\n        print(f\"\
-          \  Model saved as pipeline artifact: {model.path}\")\n\n        # \u2500\
-          \u2500 Result \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+          \ store\")\n\n        # Pas d'artefact KFP \xAB model \xBB : le mod\xE8\
+          le complet est dans MLflow/MinIO ;\n        # cela \xE9vite un gros upload\
+          \ vers le d\xE9p\xF4t d'artefacts du workflow (SeaweedFS / S3 KFP).\n\n\
+          \        # \u2500\u2500 Result \u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
-          \u2500\u2500\u2500\u2500\u2500\n        run_id = run.info.run_id\n\n   \
-          \     print(\"\\n\" + \"=\" * 70)\n        print(\"  [SUCCESS] TRAINING\
+          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n        run_id = run.info.run_id\n\
+          \n        print(\"\\n\" + \"=\" * 70)\n        print(\"  [SUCCESS] TRAINING\
           \ COMPLETE\")\n        print(\"=\" * 70)\n        print(f\"  Total logs\
           \ processed  : {len(df):,}\")\n        print(f\"  Clusters identified  \
           \ : {kmeans_model.n_clusters}\")\n        print(f\"  TF-IDF vocabulary \
@@ -592,7 +584,7 @@ deploymentSpec:
           \      : {sil_score:.3f}\")\n        print(f\"  Inertia               :\
           \ {kmeans_model.inertia_:.0f}\")\n        print(f\"  MLflow experiment \
           \    : {experiment_name}\")\n        print(f\"  MLflow run ID         :\
-          \ {run_id}\")\n        print(\"=\" * 70)\n\n        # \u2500\u2500 14. Return\
+          \ {run_id}\")\n        print(\"=\" * 70)\n\n        # \u2500\u2500 13. Return\
           \ the MLflow run_id \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n        return run_id\n\
