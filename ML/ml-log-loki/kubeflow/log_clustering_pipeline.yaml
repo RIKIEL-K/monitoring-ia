@@ -1,10 +1,15 @@
 # PIPELINE DEFINITION
 # Name: log-clustering-pipeline
-# Description: Pipeline de clustering de logs Loki avec TF-IDF + K-Means. Entraîne le modèle, logue dans MLflow, et enregistre dans le Model Registry.
+# Description: Pipeline de clustering de logs Loki (TF-IDF + K-Means). Train → Registry → validation MLflow → patch déploiement serving.
 # Inputs:
+#    anomaly_rate_max: float [Default: 100.0]
+#    anomaly_rate_min: float [Default: 0.0]
 #    aws_access_key: str [Default: 'minioadmin']
 #    aws_secret_key: str [Default: 'minioadmin']
 #    data_path: str [Default: '/data/mock_loki_logs.csv']
+#    deploy_artifacts_pvc_name: str [Default: 'training-data-pvc']
+#    deployment_name: str [Default: 'log-clustering-serving']
+#    deployment_namespace: str [Default: 'default']
 #    experiment_name: str [Default: 'log-clustering-loki']
 #    k_range: str [Default: '3,5,8,10,12,15']
 #    max_df: float [Default: 0.95]
@@ -16,7 +21,40 @@
 #    n_clusters: int [Default: 5.0]
 #    n_init: int [Default: 10.0]
 #    random_state: int [Default: 42.0]
+#    serving_base_image: str [Default: 'loki-kmeans-serve']
+#    serving_container_name: str [Default: 'serving']
+#    serving_image_tag: str [Default: 'latest']
 components:
+  comp-deploy-model:
+    executorLabel: exec-deploy-model
+    inputDefinitions:
+      parameters:
+        aws_access_key:
+          parameterType: STRING
+        aws_secret_key:
+          parameterType: STRING
+        base_image:
+          parameterType: STRING
+        container_name:
+          parameterType: STRING
+        deployment_name:
+          parameterType: STRING
+        deployment_namespace:
+          parameterType: STRING
+        image_tag:
+          parameterType: STRING
+        minio_endpoint:
+          parameterType: STRING
+        mlflow_tracking_uri:
+          parameterType: STRING
+        model_name:
+          parameterType: STRING
+        model_version:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
   comp-register-model:
     executorLabel: exec-register-model
     inputDefinitions:
@@ -98,8 +136,94 @@ components:
       parameters:
         Output:
           parameterType: STRING
+  comp-validate-model:
+    executorLabel: exec-validate-model
+    inputDefinitions:
+      parameters:
+        anomaly_rate_max:
+          parameterType: NUMBER_DOUBLE
+        anomaly_rate_min:
+          parameterType: NUMBER_DOUBLE
+        mlflow_tracking_uri:
+          parameterType: STRING
+        run_id:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
 deploymentSpec:
   executors:
+    exec-deploy-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - deploy_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'kubernetes'\
+          \ && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef deploy_model(\n    mlflow_tracking_uri: str,\n    minio_endpoint:\
+          \ str,\n    aws_access_key: str,\n    aws_secret_key: str,\n    model_name:\
+          \ str,\n    model_version: str,\n    deployment_name: str,\n    deployment_namespace:\
+          \ str,\n    container_name: str,\n    base_image: str,\n    image_tag: str,\n\
+          ) -> str:\n    \"\"\"\n    Met \xE0 jour un Deployment Kubernetes pour pointer\
+          \ vers new_image.\n\n    Le Dockerfile g\xE9n\xE9r\xE9 sous /artifacts documente\
+          \ la commande mlflow models serve\n    pour models:/{model_name}/{model_version}\
+          \ (build image hors pipeline, ex. CI).\n    \"\"\"\n    from kubernetes\
+          \ import client, config\n\n    new_image = f\"{base_image}:{image_tag}\"\
+          \n    print(f\"D\xE9ploiement mod\xE8le {model_name} version {model_version}\"\
+          )\n    print(f\"Cible: {deployment_namespace}/{deployment_name}, conteneur={container_name}\"\
+          )\n    print(f\"Nouvelle image: {new_image}\")\n\n    # Dockerfile de r\xE9\
+          f\xE9rence (align\xE9 sur le Dockerfile racine du repo, versionn\xE9)\n\
+          \    dockerfile_content = f\"\"\"# G\xE9n\xE9r\xE9 par le pipeline Kubeflow\
+          \ (ml-log-loki)\nFROM python:3.12-slim\nWORKDIR /app\nRUN pip install --no-cache-dir\
+          \ mlflow==2.16.2 scikit-learn==1.5.2 pandas boto3\nENV MLFLOW_TRACKING_URI={mlflow_tracking_uri}\n\
+          ENV MLFLOW_S3_ENDPOINT_URL={minio_endpoint}\nENV AWS_ACCESS_KEY_ID={aws_access_key}\n\
+          ENV AWS_SECRET_ACCESS_KEY={aws_secret_key}\nENV MODEL_NAME={model_name}\n\
+          ENV MODEL_VERSION={model_version}\nEXPOSE 5001\nCMD [\"mlflow\", \"models\"\
+          , \"serve\", \"-m\", \"models:/{model_name}/{model_version}\", \"-h\", \"\
+          0.0.0.0\", \"-p\", \"5001\", \"--env-manager=local\"]\n\"\"\"\n\n    artifacts_dir\
+          \ = \"/artifacts\"\n    os.makedirs(artifacts_dir, exist_ok=True)\n    safe_name\
+          \ = model_name.replace(\"/\", \"-\")\n    dockerfile_path = os.path.join(\n\
+          \        artifacts_dir, f\"Dockerfile.{safe_name}.v{model_version}\"\n \
+          \   )\n    with open(dockerfile_path, \"w\", encoding=\"utf-8\") as f:\n\
+          \        f.write(dockerfile_content)\n    print(f\"Dockerfile enregistr\xE9\
+          \ sur le PVC: {dockerfile_path}\")\n\n    config.load_incluster_config()\n\
+          \    apps_v1 = client.AppsV1Api()\n\n    dep = apps_v1.read_namespaced_deployment(deployment_name,\
+          \ deployment_namespace)\n    containers = dep.spec.template.spec.containers\n\
+          \    idx = None\n    for i, c in enumerate(containers):\n        if c.name\
+          \ == container_name:\n            idx = i\n            break\n    if idx\
+          \ is None:\n        names = [c.name for c in containers]\n        raise\
+          \ ValueError(\n            f\"Conteneur {container_name!r} introuvable.\
+          \ Conteneurs: {names}\"\n        )\n\n    patch = [\n        {\n       \
+          \     \"op\": \"replace\",\n            \"path\": f\"/spec/template/spec/containers/{idx}/image\"\
+          ,\n            \"value\": new_image,\n        }\n    ]\n    apps_v1.patch_namespaced_deployment(\n\
+          \        name=deployment_name,\n        namespace=deployment_namespace,\n\
+          \        body=patch,\n        content_type=\"application/json-patch+json\"\
+          ,\n    )\n    print(\"Deployment patch\xE9 (rolling update d\xE9clench\xE9\
+          ).\")\n\n    return (\n        f\"Mod\xE8le {model_name} v{model_version}\
+          \ \u2192 {deployment_namespace}/\"\n        f\"{deployment_name} (image\
+          \ {new_image})\"\n    )\n\n"
+        image: python:3.12-slim
     exec-register-model:
       container:
         args:
@@ -406,17 +530,24 @@ deploymentSpec:
           \ top_words = label_clusters(\n            df, kmeans_model, feature_names\n\
           \        )\n\n        for cid, label in cluster_labels_map.items():\n  \
           \          mlflow.log_param(f\"cluster_{cid}_label\", label)\n         \
-          \   print(f\"  Cluster {cid}: {label}\")\n\n        # \u2500\u2500 10. Export\
-          \ summary CSV \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+          \   print(f\"  Cluster {cid}: {label}\")\n\n        # Part des logs dans\
+          \ des clusters \xAB Erreurs \xBB (0\u20131), pour quality gate validate_model\n\
+          \        error_cluster_mask = df[\"cluster_label\"].str.contains(\n    \
+          \        \"Erreurs\", case=False, na=False\n        )\n        anomaly_rate\
+          \ = float(error_cluster_mask.mean()) if len(df) > 0 else 0.0\n        mlflow.log_metric(\"\
+          anomaly_rate\", round(anomaly_rate, 6))\n        print(\n            f\"\
+          \  anomaly_rate (part logs clusters Erreurs): {anomaly_rate:.4f} \"\n  \
+          \          f\"({anomaly_rate * 100:.2f} %)\"\n        )\n\n        # \u2500\
+          \u2500 10. Export summary CSV \u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
-          \u2500\n        print(\"\\n[Step 7] Exporting cluster summary\")\n     \
-          \   import tempfile\n\n        rows = []\n        for cid in range(kmeans_model.n_clusters):\n\
-          \            cluster_data = df[df[\"cluster_id\"] == cid]\n            rows.append(\n\
-          \                {\n                    \"ClusterID\": cid,\n          \
-          \          \"Label\": cluster_labels_map.get(cid, \"Unknown\"),\n      \
-          \              \"TopTerms\": \", \".join(top_words[cid][:8]),\n        \
-          \            \"ExampleLog\": (\n                        cluster_data[\"\
+          \u2500\u2500\u2500\u2500\n        print(\"\\n[Step 7] Exporting cluster\
+          \ summary\")\n        import tempfile\n\n        rows = []\n        for\
+          \ cid in range(kmeans_model.n_clusters):\n            cluster_data = df[df[\"\
+          cluster_id\"] == cid]\n            rows.append(\n                {\n   \
+          \                 \"ClusterID\": cid,\n                    \"Label\": cluster_labels_map.get(cid,\
+          \ \"Unknown\"),\n                    \"TopTerms\": \", \".join(top_words[cid][:8]),\n\
+          \                    \"ExampleLog\": (\n                        cluster_data[\"\
           message\"].iloc[0]\n                        if len(cluster_data) > 0\n \
           \                       else \"\"\n                    ),\n            \
           \        \"Count\": int(len(cluster_data)),\n                    \"Percentage\"\
@@ -467,13 +598,116 @@ deploymentSpec:
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n        return run_id\n\
           \n"
         image: python:3.7
+    exec-validate-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - validate_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'requests' &&\
+          \ \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef validate_model(\n    mlflow_tracking_uri: str,\n    run_id: str,\n\
+          \    anomaly_rate_min: float,\n    anomaly_rate_max: float,\n) -> str:\n\
+          \    \"\"\"\n    Valide les performances via l'API REST MLflow (GET .../runs/get).\n\
+          \n    - R\xE9cup\xE8re run.data.metrics, construit un dict cl\xE9 -> valeur\
+          \ float.\n    - M\xE9trique attendue : anomaly_rate (fraction 0\u20131 logu\xE9\
+          e par train_model).\n    - Compare anomaly_rate * 100 aux seuils min/max\
+          \ (exprim\xE9s en %).\n\n    Returns:\n        JSON string avec decision\
+          \ PASSED / FAILED et d\xE9tails.\n\n    Raises:\n        RuntimeError: si\
+          \ FAILED (bloque le pipeline avant deploy_model).\n    \"\"\"\n    import\
+          \ requests\n\n    base = mlflow_tracking_uri.rstrip(\"/\")\n    print(f\"\
+          Validation du run MLflow: {run_id}\")\n    print(\n        f\"Plage acceptable\
+          \ pour anomaly_rate (agr\xE9g\xE9e en %): \"\n        f\"{anomaly_rate_min}%\
+          \ \u2013 {anomaly_rate_max}%\"\n    )\n\n    api_url = f\"{base}/api/2.0/mlflow/runs/get\"\
+          \n    response = requests.get(api_url, params={\"run_id\": run_id}, timeout=60)\n\
+          \    response.raise_for_status()\n\n    run_data = response.json()\n   \
+          \ metrics = run_data[\"run\"][\"data\"][\"metrics\"]\n    metrics_dict =\
+          \ {}\n    for m in metrics:\n        key = m[\"key\"]\n        raw = m[\"\
+          value\"]\n        metrics_dict[key] = float(raw)\n\n    print(f\"M\xE9triques\
+          \ r\xE9cup\xE9r\xE9es: {metrics_dict}\")\n\n    anomaly_rate = metrics_dict.get(\"\
+          anomaly_rate\")\n    if anomaly_rate is None:\n        validation_result\
+          \ = {\n            \"decision\": \"FAILED\",\n            \"reason\": \"\
+          m\xE9trique anomaly_rate absente du run\",\n            \"metrics\": metrics_dict,\n\
+          \        }\n    else:\n        anomaly_pct = anomaly_rate * 100.0\n    \
+          \    if anomaly_rate_min <= anomaly_pct <= anomaly_rate_max:\n         \
+          \   decision = \"PASSED\"\n            reason = (\n                f\"Taux\
+          \ anomaly_rate {anomaly_pct:.2f}% dans la plage \"\n                f\"\
+          [{anomaly_rate_min}%, {anomaly_rate_max}%]\"\n            )\n        else:\n\
+          \            decision = \"FAILED\"\n            reason = (\n           \
+          \     f\"Taux anomaly_rate {anomaly_pct:.2f}% hors plage \"\n          \
+          \      f\"[{anomaly_rate_min}%, {anomaly_rate_max}%]\"\n            )\n\
+          \        validation_result = {\n            \"decision\": decision,\n  \
+          \          \"reason\": reason,\n            \"anomaly_rate\": anomaly_pct,\n\
+          \            \"threshold_min_pct\": anomaly_rate_min,\n            \"threshold_max_pct\"\
+          : anomaly_rate_max,\n            \"metrics\": metrics_dict,\n        }\n\
+          \n    out = json.dumps(validation_result, ensure_ascii=False)\n    print(f\"\
+          R\xE9sultat validation: {validation_result['decision']}\")\n    print(f\"\
+          D\xE9tail: {validation_result.get('reason', '')}\")\n\n    if validation_result[\"\
+          decision\"] != \"PASSED\":\n        raise RuntimeError(out)\n\n    return\
+          \ out\n\n"
+        image: python:3.7
 pipelineInfo:
-  description: "Pipeline de clustering de logs Loki avec TF-IDF + K-Means. Entra\xEE\
-    ne le mod\xE8le, logue dans MLflow, et enregistre dans le Model Registry."
+  description: "Pipeline de clustering de logs Loki (TF-IDF + K-Means). Train \u2192\
+    \ Registry \u2192 validation MLflow \u2192 patch d\xE9ploiement serving."
   name: log-clustering-pipeline
 root:
   dag:
     tasks:
+      deploy-model:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-deploy-model
+        dependentTasks:
+        - register-model
+        - validate-model
+        inputs:
+          parameters:
+            aws_access_key:
+              componentInputParameter: aws_access_key
+            aws_secret_key:
+              componentInputParameter: aws_secret_key
+            base_image:
+              componentInputParameter: serving_base_image
+            container_name:
+              componentInputParameter: serving_container_name
+            deployment_name:
+              componentInputParameter: deployment_name
+            deployment_namespace:
+              componentInputParameter: deployment_namespace
+            image_tag:
+              componentInputParameter: serving_image_tag
+            minio_endpoint:
+              componentInputParameter: minio_endpoint
+            mlflow_tracking_uri:
+              componentInputParameter: mlflow_tracking_uri
+            model_name:
+              componentInputParameter: model_name
+            model_version:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: register-model
+        taskInfo:
+          name: deploy-model
       register-model:
         cachingOptions:
           enableCache: true
@@ -536,8 +770,38 @@ root:
               componentInputParameter: random_state
         taskInfo:
           name: train-model
+      validate-model:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-validate-model
+        dependentTasks:
+        - register-model
+        - train-model
+        inputs:
+          parameters:
+            anomaly_rate_max:
+              componentInputParameter: anomaly_rate_max
+            anomaly_rate_min:
+              componentInputParameter: anomaly_rate_min
+            mlflow_tracking_uri:
+              componentInputParameter: mlflow_tracking_uri
+            run_id:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: train-model
+        taskInfo:
+          name: validate-model
   inputDefinitions:
     parameters:
+      anomaly_rate_max:
+        defaultValue: 100.0
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      anomaly_rate_min:
+        defaultValue: 0.0
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
       aws_access_key:
         defaultValue: minioadmin
         isOptional: true
@@ -548,6 +812,18 @@ root:
         parameterType: STRING
       data_path:
         defaultValue: /data/mock_loki_logs.csv
+        isOptional: true
+        parameterType: STRING
+      deploy_artifacts_pvc_name:
+        defaultValue: training-data-pvc
+        isOptional: true
+        parameterType: STRING
+      deployment_name:
+        defaultValue: log-clustering-serving
+        isOptional: true
+        parameterType: STRING
+      deployment_namespace:
+        defaultValue: default
         isOptional: true
         parameterType: STRING
       experiment_name:
@@ -594,6 +870,18 @@ root:
         defaultValue: 42.0
         isOptional: true
         parameterType: NUMBER_INTEGER
+      serving_base_image:
+        defaultValue: loki-kmeans-serve
+        isOptional: true
+        parameterType: STRING
+      serving_container_name:
+        defaultValue: serving
+        isOptional: true
+        parameterType: STRING
+      serving_image_tag:
+        defaultValue: latest
+        isOptional: true
+        parameterType: STRING
 schemaVersion: 2.1.0
 sdkVersion: kfp-2.7.0
 ---
@@ -601,6 +889,10 @@ platforms:
   kubernetes:
     deploymentSpec:
       executors:
+        exec-deploy-model:
+          pvcMount:
+          - componentInputParameter: deploy_artifacts_pvc_name
+            mountPath: /artifacts
         exec-train-model:
           pvcMount:
           - constant: training-data-pvc
