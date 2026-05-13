@@ -218,6 +218,9 @@ deploymentSpec:
           ).\")\n\n    return (\n        f\"Mod\xE8le {model_name} v{model_version}\
           \ \u2192 {deployment_namespace}/\"\n        f\"{deployment_name} (image\
           \ {new_image})\"\n    )\n\n"
+        env:
+        - name: AWS_ENDPOINT_URL
+          value: http://minio-service.default:9000
         image: python:3.12-slim
     exec-register-model:
       container:
@@ -289,6 +292,9 @@ deploymentSpec:
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    return str(result.version)\n\
           \n"
+        env:
+        - name: AWS_ENDPOINT_URL
+          value: http://minio-service.default:9000
         image: python:3.7
     exec-train-model:
       container:
@@ -361,7 +367,15 @@ deploymentSpec:
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\n    mlflow.set_experiment(experiment_name)\n\
-          \    print(f\"Using experiment: {experiment_name}\")\n\n    # \u2550\u2550\
+          \    print(f\"Using experiment: {experiment_name}\")\n\n    # \u2500\u2500\
+          \ 4. Ensure 'mlpipeline' bucket exists for KFP logs \u2500\u2500\u2500\u2500\
+          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    import boto3\n\
+          \    from botocore.client import Config\n    s3_client = boto3.client('s3',\
+          \ endpoint_url=minio_endpoint,\n                             aws_access_key_id=aws_access_key,\n\
+          \                             aws_secret_access_key=aws_secret_key,\n  \
+          \                           config=Config(signature_version='s3v4'))\n \
+          \   try:\n        s3_client.head_bucket(Bucket='mlpipeline')\n    except:\n\
+          \        s3_client.create_bucket(Bucket='mlpipeline')\n\n    # \u2550\u2550\
           \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\
           \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\
           \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\
@@ -589,6 +603,9 @@ deploymentSpec:
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n        return run_id\n\
           \n"
+        env:
+        - name: AWS_ENDPOINT_URL
+          value: http://minio-service.default:9000
         image: python:3.7
     exec-validate-model:
       container:
@@ -656,6 +673,9 @@ deploymentSpec:
           D\xE9tail: {validation_result.get('reason', '')}\")\n\n    if validation_result[\"\
           decision\"] != \"PASSED\":\n        raise RuntimeError(out)\n\n    return\
           \ out\n\n"
+        env:
+        - name: AWS_ENDPOINT_URL
+          value: http://minio-service.default:9000
         image: python:3.7
 pipelineInfo:
   description: "Pipeline de clustering de logs Loki (TF-IDF + K-Means). Train \u2192\
