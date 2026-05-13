@@ -98,10 +98,6 @@ def log_clustering_pipeline(
         pvc_name="training-data-pvc",
         mount_path="/data",
     )
-    # Forcer la configuration S3 du launcher pour utiliser MinIO au lieu de SeaweedFS
-    storage_config = '{"archiveLogs":true,"s3":{"endpoint":"minio-service.default.svc.cluster.local:9000","bucket":"mlpipeline","insecure":true}}'
-    train_task.set_env_variable(name="V2_LAUNCHER_STORAGE_CONFIG", value=storage_config)
-
     # ── Step 2 : Enregistrement dans le Model Registry ───────────────
     # register_model reçoit le run_id retourné par train_model
     register_task = register_model(
@@ -112,7 +108,6 @@ def log_clustering_pipeline(
         run_id=train_task.outputs['Output'],
         model_name=model_name,
     )
-    register_task.set_env_variable(name="V2_LAUNCHER_STORAGE_CONFIG", value=storage_config)
 
     validate_task = validate_model(
         mlflow_tracking_uri=mlflow_tracking_uri,
@@ -120,7 +115,6 @@ def log_clustering_pipeline(
         anomaly_rate_min=anomaly_rate_min,
         anomaly_rate_max=anomaly_rate_max,
     )
-    validate_task.set_env_variable(name="V2_LAUNCHER_STORAGE_CONFIG", value=storage_config)
     validate_task.after(register_task)
 
     deploy_task = deploy_model(
@@ -136,7 +130,6 @@ def log_clustering_pipeline(
         base_image=serving_base_image,
         image_tag=serving_image_tag,
     )
-    deploy_task.set_env_variable(name="V2_LAUNCHER_STORAGE_CONFIG", value=storage_config)
     deploy_task.after(validate_task)
 
     kubernetes.mount_pvc(
