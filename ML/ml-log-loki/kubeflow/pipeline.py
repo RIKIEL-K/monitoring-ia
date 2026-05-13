@@ -98,7 +98,7 @@ def log_clustering_pipeline(
         pvc_name="training-data-pvc",
         mount_path="/data",
     )
-    train_task.set_env_variable(name="AWS_ENDPOINT_URL", value=minio_endpoint)
+    train_task.set_env_variable(name="AWS_ENDPOINT_URL", value="http://minio-service.default:9000")
 
     # ── Step 2 : Enregistrement dans le Model Registry ───────────────
     # register_model reçoit le run_id retourné par train_model
@@ -110,7 +110,7 @@ def log_clustering_pipeline(
         run_id=train_task.outputs['Output'],
         model_name=model_name,
     )
-    register_task.set_env_variable(name="AWS_ENDPOINT_URL", value=minio_endpoint)
+    register_task.set_env_variable(name="AWS_ENDPOINT_URL", value="http://minio-service.default:9000")
 
     validate_task = validate_model(
         mlflow_tracking_uri=mlflow_tracking_uri,
@@ -118,7 +118,7 @@ def log_clustering_pipeline(
         anomaly_rate_min=anomaly_rate_min,
         anomaly_rate_max=anomaly_rate_max,
     )
-    validate_task.set_env_variable(name="AWS_ENDPOINT_URL", value=minio_endpoint)
+    validate_task.set_env_variable(name="AWS_ENDPOINT_URL", value="http://minio-service.default:9000")
     validate_task.after(register_task)
 
     deploy_task = deploy_model(
@@ -134,7 +134,7 @@ def log_clustering_pipeline(
         base_image=serving_base_image,
         image_tag=serving_image_tag,
     )
-    deploy_task.set_env_variable(name="AWS_ENDPOINT_URL", value=minio_endpoint)
+    deploy_task.set_env_variable(name="AWS_ENDPOINT_URL", value="http://minio-service.default:9000")
     deploy_task.after(validate_task)
 
     kubernetes.mount_pvc(
