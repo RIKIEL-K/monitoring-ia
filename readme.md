@@ -347,6 +347,9 @@ kfp pipeline create \
 
 Dans l'UI Kubeflow → **Pipelines** → **Create Run**, vous pouvez modifier tous les paramètres sans toucher au code (ex. : changer `n_clusters` de 5 à 8).
 
+> [!TIP]
+> Les données d'entraînement du step `train_model` proviennent du PVC `training-data-pvc` (monté sur `/data` dans le pod). Sur **EC2 + Minikube**, si `/data` est vide ou si vous obtenez un `FileNotFoundError` sur `/data/mock_loki_logs.csv`, suivez le **diagnostic et la solution** décrits en **§10.D** (vérification avec un pod `busybox`, puis `minikube mount`).
+
 ### 4. Faire des prédictions après l'enregistrement du modèle
 
 **Option A — Via `mlflow models serve` :**
@@ -502,15 +505,52 @@ kubectl delete pv training-data-pv --grace-period=0 --force
 kubectl apply -f manifests/data-pv.yaml
 ```
 
-### D. Erreur "FileNotFoundError: [Errno 2] No such file or directory: '/data/...'"
-**Symptôme :** Le pipeline démarre bien et communique avec MLflow, mais l'étape d'entraînement échoue rapidement. Les logs du pod (accessibles via l'interface ou avec `kubectl logs`) affichent une erreur Python indiquant que le fichier de données est introuvable.
+### D. Erreur "FileNotFoundError: [Errno 2] No such file or directory: '/data/...'" (pipeline Kubeflow / PVC `training-data-pvc`)
 
-**Cause :** Le cluster Minikube tourne dans un environnement isolé (conteneur Docker ou VM). Même si le PersistentVolume est configuré avec un `hostPath` pointant vers `/home/ubuntu/...`, ce chemin n'existe pas ou est vide à l'intérieur de Minikube car le dossier de l'EC2 n'est pas partagé avec lui.
+**Symptôme :** L'étape `train_model` échoue avec `FileNotFoundError` sur `/data/mock_loki_logs.csv` (ou autre fichier sous `/data`). Dans l'UI Kubeflow, un message du type « podname argument is required / Failed to retrieve pod logs » peut masquer la vraie erreur : il faut lire les logs côté cluster.
 
-**Solution :**
-1. Créez un pont (mount) entre le système de fichiers de l'EC2 et Minikube en exécutant cette commande en tâche de fond :
+**Cause :** Le manifeste `manifests/data-pv.yaml` expose les données via un `hostPath` (ex. `/home/ubuntu/monitoring-ia/ML/ml-log-loki/datasets` sur le nœud). Sur une **EC2 avec Minikube**, ce chemin sur le disque de l'EC2 **n'est pas le même** que le système de fichiers **à l'intérieur** de la VM Minikube : le répertoire peut être absent ou **vide** dans le pod malgré des fichiers présents sur l'hôte Ubuntu. Le montage PVC fonctionne, mais le contenu vu sous `/data` est vide.
+
+#### Diagnostic (sur l'EC2)
+
+1. **Identifier le workflow et le pod du step en échec** (namespace `kubeflow` si vos runs y sont créés) :
+   ```bash
+   kubectl get workflows -n kubeflow
+   kubectl describe workflow <nom-du-workflow> -n kubeflow | tail -40
+   kubectl get pods -n kubeflow -l workflows.argoproj.io/workflow=<nom-du-workflow>
+   ```
+
+2. **Lire les logs du conteneur d'exécution** (pod `...-system-container-impl-...`, conteneur `main` en général) :
+   ```bash
+   kubectl logs -n kubeflow <nom-du-pod-impl> -c main --tail=-1 | head -80
+   ```
+   Vous y verrez la trace Python complète (`FileNotFoundError`, etc.).
+
+3. **Vérifier que le PVC est bien monté et ce qu'il contient** (indépendamment du pipeline) :
+   ```bash
+   kubectl run -it --rm pvc-check --restart=Never -n kubeflow \
+     --image=busybox \
+     --overrides='{"spec":{"containers":[{"name":"c","image":"busybox","stdin":true,"tty":true,"command":["sh"],"volumeMounts":[{"mountPath":"/data","name":"v"}]}],"volumes":[{"name":"v","persistentVolumeClaim":{"claimName":"training-data-pvc"}}]}}' -- sh
+   ```
+   Dans le shell du pod : `ls -la /data` puis `head -3 /data/mock_loki_logs.csv`.
+   - Si `/data` est **vide** alors que les fichiers existent sur l'EC2 sous le chemin du `hostPath` : c'est bien le cas **Minikube sans partage** (voir solution ci-dessous).
+   - Si les fichiers **apparaissent** après correction : relancez un **nouveau run** du pipeline.
+
+4. **Contrôle sur l'hôte Ubuntu** (hors pod) : le CSV doit exister au chemin absolu défini dans le PV (`hostPath` dans `manifests/data-pv.yaml`), par exemple :
+   ```bash
+   ls -la /home/ubuntu/monitoring-ia/ML/ml-log-loki/datasets/mock_loki_logs.csv
+   ```
+
+#### Solution : partager le dépôt EC2 avec Minikube (`minikube mount`)
+
+1. Sur l'EC2, lancez le partage **en tâche de fond** (adaptez le chemin si votre clone n'est pas sous `/home/ubuntu/monitoring-ia`) :
    ```bash
    minikube mount /home/ubuntu/monitoring-ia:/home/ubuntu/monitoring-ia &
    ```
-2. Attendez quelques secondes que le message de succès s'affiche, puis appuyez sur `Entrée` pour reprendre la main.
-3. Relancez l'exécution du pipeline sur l'interface Kubeflow.
+   Laissez ce processus actif pendant que vous utilisez les pipelines ; sans lui, le `hostPath` vu par Minikube ne reflète pas le contenu de l'EC2.
+
+2. Vérifiez à nouveau avec le pod **busybox** + PVC (`ls -la /data`) : `mock_loki_logs.csv` doit être visible.
+
+3. Relancez l'exécution du pipeline depuis l'UI Kubeflow.
+
+*(Voir aussi la section **§3** ci-dessus pour le même principe appliqué au Job d'entraînement `training-job.yaml`.)*
