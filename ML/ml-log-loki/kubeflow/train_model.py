@@ -98,6 +98,18 @@ def train_model(
     mlflow.set_experiment(experiment_name)
     print(f"Using experiment: {experiment_name}")
 
+    # ── 4. Ensure 'mlpipeline' bucket exists for KFP logs ─────────────
+    import boto3
+    from botocore.client import Config
+    s3_client = boto3.client('s3', endpoint_url=minio_endpoint,
+                             aws_access_key_id=aws_access_key,
+                             aws_secret_access_key=aws_secret_key,
+                             config=Config(signature_version='s3v4'))
+    try:
+        s3_client.head_bucket(Bucket='mlpipeline')
+    except:
+        s3_client.create_bucket(Bucket='mlpipeline')
+
     # ══════════════════════════════════════════════════════════════════
     #  Helper functions (defined inside for KFP container isolation)
     # ══════════════════════════════════════════════════════════════════
