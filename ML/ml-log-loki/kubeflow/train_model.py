@@ -333,6 +333,17 @@ def train_model(
             mlflow.log_param(f"cluster_{cid}_label", label)
             print(f"  Cluster {cid}: {label}")
 
+        # Part des logs dans des clusters « Erreurs » (0–1), pour quality gate validate_model
+        error_cluster_mask = df["cluster_label"].str.contains(
+            "Erreurs", case=False, na=False
+        )
+        anomaly_rate = float(error_cluster_mask.mean()) if len(df) > 0 else 0.0
+        mlflow.log_metric("anomaly_rate", round(anomaly_rate, 6))
+        print(
+            f"  anomaly_rate (part logs clusters Erreurs): {anomaly_rate:.4f} "
+            f"({anomaly_rate * 100:.2f} %)"
+        )
+
         # ── 10. Export summary CSV ───────────────────────────────────
         print("\n[Step 7] Exporting cluster summary")
         import tempfile

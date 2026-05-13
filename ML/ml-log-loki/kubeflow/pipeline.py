@@ -2,8 +2,10 @@
 Log Clustering Pipeline — Kubeflow Pipeline Definition
 
 Définit le pipeline KFP complet qui chaîne :
-  1. train_model  → entraîne TF-IDF + K-Means, logue dans MLflow, retourne run_id
-  2. register_model → enregistre le modèle dans le Registry, retourne model_version
+  1. train_model     → entraîne TF-IDF + K-Means, logue dans MLflow, retourne run_id
+  2. register_model  → enregistre le modèle dans le Registry, retourne model_version
+  3. validate_model  → lit les métriques MLflow (anomaly_rate), quality gate
+  4. deploy_model    → Dockerfile sur PVC + patch image du Deployment serving
 
 Compilation :
     python pipeline.py
@@ -13,17 +15,20 @@ Ce fichier est conçu pour être compilé et exécuté par Kubeflow Pipelines.
 """
 
 from kfp import dsl, compiler
+from kfp import kubernetes
 
 # Import des composants depuis les fichiers locaux
 from train_model import train_model
 from register_model import register_model
+from validate_model import validate_model
+from deploy_model import deploy_model
 
 
 @dsl.pipeline(
     name="log-clustering-pipeline",
     description=(
-        "Pipeline de clustering de logs Loki avec TF-IDF + K-Means. "
-        "Entraîne le modèle, logue dans MLflow, et enregistre dans le Model Registry."
+        "Pipeline de clustering de logs Loki (TF-IDF + K-Means). "
+        "Train → Registry → validation MLflow → patch déploiement serving."
     ),
 )
 def log_clustering_pipeline(
@@ -47,13 +52,26 @@ def log_clustering_pipeline(
     k_range: str = "3,5,8,10,12,15",
     # Model Registry
     model_name: str = "log-clustering-kmeans",
+    # Validation (anomaly_rate = part des logs en clusters « Erreurs », seuils en %)
+    anomaly_rate_min: float = 0.0,
+    anomaly_rate_max: float = 100.0,
+    # Déploiement Kubernetes (image déjà poussée dans le registry ; le pipeline patch le tag)
+    deployment_name: str = "log-clustering-serving",
+    deployment_namespace: str = "default",
+    serving_container_name: str = "serving",
+    serving_base_image: str = "loki-kmeans-serve",
+    serving_image_tag: str = "latest",
+    # PVC où écrire les Dockerfiles de référence (même PVC que les données si besoin)
+    deploy_artifacts_pvc_name: str = "training-data-pvc",
 ):
     """
     Pipeline complet de clustering de logs Loki.
 
     Étapes :
-        1. train_model  : charge les données, TF-IDF, K-Means, log MLflow
-        2. register_model : enregistre le modèle dans le MLflow Model Registry
+        1. train_model      : données, TF-IDF, K-Means, métriques MLflow (dont anomaly_rate)
+        2. register_model   : Model Registry MLflow
+        3. validate_model   : API MLflow runs/get, seuils sur anomaly_rate (%)
+        4. deploy_model     : artefact Dockerfile sur PVC + rolling update (image)
     """
 
     # ── Step 1 : Entraînement ────────────────────────────────────────
@@ -73,9 +91,8 @@ def log_clustering_pipeline(
         k_range=k_range,
         model_name=model_name,
     )
-    
+
     # Mount PVC to the training task
-    from kfp import kubernetes
     kubernetes.mount_pvc(
         train_task,
         pvc_name="training-data-pvc",
@@ -91,6 +108,35 @@ def log_clustering_pipeline(
         aws_secret_key=aws_secret_key,
         run_id=train_task.outputs['Output'],
         model_name=model_name,
+    )
+
+    validate_task = validate_model(
+        mlflow_tracking_uri=mlflow_tracking_uri,
+        run_id=train_task.outputs['Output'],
+        anomaly_rate_min=anomaly_rate_min,
+        anomaly_rate_max=anomaly_rate_max,
+    )
+    validate_task.after(register_task)
+
+    deploy_task = deploy_model(
+        mlflow_tracking_uri=mlflow_tracking_uri,
+        minio_endpoint=minio_endpoint,
+        aws_access_key=aws_access_key,
+        aws_secret_key=aws_secret_key,
+        model_name=model_name,
+        model_version=register_task.outputs['Output'],
+        deployment_name=deployment_name,
+        deployment_namespace=deployment_namespace,
+        container_name=serving_container_name,
+        base_image=serving_base_image,
+        image_tag=serving_image_tag,
+    )
+    deploy_task.after(validate_task)
+
+    kubernetes.mount_pvc(
+        deploy_task,
+        pvc_name=deploy_artifacts_pvc_name,
+        mount_path="/artifacts",
     )
 
 
