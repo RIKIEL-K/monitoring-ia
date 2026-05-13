@@ -8,7 +8,6 @@ Ce fichier est conçu pour être compilé et exécuté par Kubeflow Pipelines.
 """
 
 from kfp import dsl
-from kfp.dsl import Output, Model
 
 
 @dsl.component(
@@ -41,8 +40,6 @@ def train_model(
     k_range: str,
     # Model naming
     model_name: str,
-    # Output artifact
-    model: Output[Model],
 ) -> str:
     """
     Train a TF-IDF + K-Means log clustering pipeline.
@@ -65,8 +62,7 @@ def train_model(
         n_init: Number of K-Means initializations
         random_state: Random seed for reproducibility
         k_range: Comma-separated k values to evaluate (e.g. "3,5,8,10")
-        model_name: Name for the PyFunc model artifact path
-        model: Kubeflow pipeline output artifact
+        model_name: Nom du modèle PyFunc dans MLflow
 
     Returns:
         run_id: MLflow run ID for downstream components
@@ -80,7 +76,6 @@ def train_model(
     import numpy as np
     import os
     import re
-    import joblib
     import warnings
 
     warnings.filterwarnings("ignore")
@@ -402,9 +397,8 @@ def train_model(
         )
         print("  PyFunc pipeline model logged to MLflow artifact store")
 
-        # ── 13. Save model as Kubeflow pipeline artifact ─────────────
-        joblib.dump(kmeans_model, model.path)
-        print(f"  Model saved as pipeline artifact: {model.path}")
+        # Pas d'artefact KFP « model » : le modèle complet est dans MLflow/MinIO ;
+        # cela évite un gros upload vers le dépôt d'artefacts du workflow (SeaweedFS / S3 KFP).
 
         # ── Result ───────────────────────────────────────────────────
         run_id = run.info.run_id
@@ -421,5 +415,5 @@ def train_model(
         print(f"  MLflow run ID         : {run_id}")
         print("=" * 70)
 
-        # ── 14. Return the MLflow run_id ─────────────────────────────
+        # ── 13. Return the MLflow run_id ─────────────────────────────
         return run_id

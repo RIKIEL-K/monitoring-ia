@@ -349,6 +349,7 @@ Dans l'UI Kubeflow → **Pipelines** → **Create Run**, vous pouvez modifier to
 
 > [!TIP]
 > Les données d'entraînement du step `train_model` proviennent du PVC `training-data-pvc` (monté sur `/data` dans le pod). Sur **EC2 + Minikube**, si `/data` est vide ou si vous obtenez un `FileNotFoundError` sur `/data/mock_loki_logs.csv`, suivez le **diagnostic et la solution** décrits en **§10.D** (vérification avec un pod `busybox`, puis `minikube mount`).
+> Si le train affiche `[SUCCESS] TRAINING COMPLETE` puis échoue sur l'**upload** d'artefacts vers **`seaweedfs.kubeflow`**, voir **§10.E**.
 
 ### 4. Faire des prédictions après l'enregistrement du modèle
 
@@ -554,3 +555,33 @@ kubectl apply -f manifests/data-pv.yaml
 3. Relancez l'exécution du pipeline depuis l'UI Kubeflow.
 
 *(Voir aussi la section **§3** ci-dessus pour le même principe appliqué au Job d'entraînement `training-job.yaml`.)*
+
+### E. Après « TRAINING COMPLETE » : échec `uploadOutputArtifacts` / `dial tcp ... seaweedfs.kubeflow:9000: i/o timeout`
+
+**Symptôme :** Les logs du conteneur `main` montrent que `train_model` se termine correctement (données chargées, MLflow, message `[SUCCESS] TRAINING COMPLETE`), puis le **launcher KFP v2** échoue avec des erreurs du type :
+`Failed to upload output artifact "model"` ou `"executor-logs"` … `Put "http://seaweedfs.kubeflow:9000/.../mlpipeline/..."` … **`i/o timeout`**.
+
+**Cause :** Les **artefacts de pipeline** (fichiers produits par le composant, métadonnées, logs exécuteur) sont envoyés vers le **dépôt S3 interne** configuré pour Argo / Kubeflow Pipelines (souvent **SeaweedFS** dans le namespace `kubeflow`). Ce stockage est **distinct** du MinIO que vous utilisez pour **MLflow** (`minio-service.default`). Si SeaweedFS est indisponible, surchargé, ou injoignable depuis les pods de workflow (réseau, NetworkPolicy), les `PutObject` expirent et le step est marqué en échec même si l'entraînement a réussi.
+
+**Diagnostic (sur l'EC2) :**
+
+```bash
+kubectl get pods -n kubeflow | grep -iE 'seaweed|workflow-controller'
+kubectl get svc -n kubeflow | grep -iE 'seaweed'
+# Test de connectivité depuis le cluster (adapter le nom du service si différent) :
+kubectl run -it --rm s3-probe --restart=Never -n kubeflow --image=curlimages/curl -- \
+  curl -sS -m 5 -o /dev/null -w "%{http_code}" http://seaweedfs.kubeflow:9000/ || true
+```
+
+**Pistes de correction :**
+
+1. **Rétablir SeaweedFS** : redémarrer ou corriger les pods / le Service (`kubectl describe pod`, événements `FailedScheduling`, manque de ressources sur l'EC2, etc.).
+
+2. **Basculer le dépôt d'artefacts du workflow vers votre MinIO** (celui qui fonctionne déjà pour MLflow) : aligner la section **artifactRepository** du `ConfigMap` `workflow-controller-configmap` (namespace `kubeflow`) sur un endpoint joignable depuis les pods, par exemple **`minio-service.default.svc.cluster.local:9000`** (avec `insecure: true` si besoin), avec un **bucket** `mlpipeline` **créé** sur ce MinIO et des **credentials** cohérents (Secret du type `mlpipeline-minio-artifact` attendu par votre version de KFP — voir la structure déjà proposée en **§10.A** ; adaptez `endpoint` et les noms de Secret si votre MinIO est dans `default` et non dans `kubeflow`). Puis :
+   ```bash
+   kubectl rollout restart deployment workflow-controller -n kubeflow
+   ```
+
+3. **Côté code du dépôt** : l'artefact KFP `model` (dump joblib redondant avec MLflow) a été retiré du composant `train_model` pour limiter la taille des fichiers envoyés au dépôt d'artefacts ; l'upload **`executor-logs`** reste nécessaire tant que le backend S3 du workflow n'est pas sain.
+
+**Note :** Les avertissements `pip` / dépendances `kfp` dans les logs du conteneur d'exécution et l'avertissement **Python 3.7** proviennent de l'image d'exécution KFP ; ils ne sont en général **pas** la cause de ce timeout SeaweedFS.
