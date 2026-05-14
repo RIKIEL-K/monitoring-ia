@@ -183,8 +183,8 @@ deploymentSpec:
           ) -> str:\n    \"\"\"\n    Met \xE0 jour un Deployment Kubernetes pour pointer\
           \ vers new_image.\n\n    Le Dockerfile g\xE9n\xE9r\xE9 sous /artifacts documente\
           \ la commande mlflow models serve\n    pour models:/{model_name}/{model_version}\
-          \ (build image hors pipeline, ex. CI).\n    \"\"\"\n    from kubernetes\
-          \ import client, config\n\n    new_image = f\"{base_image}:{image_tag}\"\
+          \ (build image hors pipeline, ex. CI).\n    \"\"\"\n    import os\n    from\
+          \ kubernetes import client, config\n\n    new_image = f\"{base_image}:{image_tag}\"\
           \n    print(f\"D\xE9ploiement mod\xE8le {model_name} version {model_version}\"\
           )\n    print(f\"Cible: {deployment_namespace}/{deployment_name}, conteneur={container_name}\"\
           )\n    print(f\"Nouvelle image: {new_image}\")\n\n    # Dockerfile de r\xE9\
