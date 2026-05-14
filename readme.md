@@ -558,7 +558,180 @@ kubectl apply -f manifests/data-pv.yaml
 
 ### E. Après « TRAINING COMPLETE » : échec `uploadOutputArtifacts` / `dial tcp ... seaweedfs.kubeflow:9000: i/o timeout`
 
-**Symptôme :** Les logs du conteneur `main` montrent que `train_model` se termine correctement (données chargées, MLflow, message `[SUCCESS] TRAINING COMPLETE`), puis le **launcher KFP v2** échoue avec des erreurs du type :
+**Symptôme :** L'entraînement se déroule correctement jusqu'à `[SUCCESS] TRAINING COMPLETE` (MLflow + MinIO OK), puis le **launcher KFP v2** (`launcher_v2.go`) tente d'uploader les `executor-logs` vers un bucket S3 interne et échoue systématiquement :
+
+```
+W launcher_v2.go:845] Failed to upload output artifacts: ...
+  Put "http://seaweedfs.kubeflow:9000/mlpipeline/v2/artifacts/.../executor-logs-0": 
+  dial tcp 10.x.x.x:9000: i/o timeout
+E launcher_v2.go:867] All upload artifact attempts failed: ...
+F main.go:58] failed to execute component: ...
+Error: exit status 1
+```
+
+Le pipeline est donc marqué en **erreur** malgré un entraînement réussi. Les artefacts MLflow et les données MinIO (pour MLflow) sont bien présents ; c'est uniquement l'upload des **métadonnées internes de Kubeflow** qui échoue.
+
+---
+
+#### Cause racine
+
+Il y a **deux problèmes combinés** dans la configuration du cluster :
+
+| # | Problème | Détail |
+|---|---|---|
+| **1** | Le KFP v2 Launcher cherche **`seaweedfs.kubeflow:9000`** | Ce service n'existe pas dans le cluster → `i/o timeout` |
+| **2** | Le `workflow-controller-configmap` pointe sur **`minio-service.kubeflow:9000`** | MinIO est dans le namespace `default`, pas `kubeflow` → résolution DNS cassée |
+
+Le **launcher KFP v2** (binaire Go `launcher_v2.go`) lit l'endpoint du dépôt d'artefacts depuis le `workflow-controller-configmap` dans le namespace `kubeflow`. Cette configuration est complètement **indépendante** des variables d'environnement du pod Python (`MLFLOW_S3_ENDPOINT_URL`, `AWS_ENDPOINT_URL`). Toute tentative de redirection via `set_env_variable()` dans `pipeline.py` est inefficace sur ce binaire.
+
+> [!IMPORTANT]
+> Le `set_env_variable()` du SDK KFP ne contrôle que le **code Python** du composant. Le **binaire Go du Launcher** qui s'exécute en parallèle dans le même pod lit sa configuration S3 exclusivement depuis le **ConfigMap Kubernetes** `workflow-controller-configmap`.
+
+---
+
+#### Diagnostic (sur l'EC2)
+
+```bash
+# 1. Vérifier quels ConfigMaps existent dans kubeflow
+kubectl get configmap -n kubeflow | grep -E "artifact|minio|seaweed|pipeline|workflow"
+
+# 2. Lire la configuration actuelle du artifact store
+kubectl get configmap workflow-controller-configmap -n kubeflow -o yaml
+
+# 3. Vérifier que le service seaweedfs n'existe pas (attendu : NotFound)
+kubectl get svc seaweedfs -n kubeflow
+
+# 4. Vérifier si MinIO est dans le bon namespace
+kubectl get svc -n default | grep minio
+kubectl get svc -n kubeflow | grep minio
+```
+
+**Résultat typique révélant le problème :**
+
+```yaml
+# workflow-controller-configmap
+artifactRepository:
+  s3:
+    endpoint: "minio-service.kubeflow:9000"  # ← mauvais namespace !
+    bucket: "mlpipeline"
+```
+
+```bash
+# kubectl get svc seaweedfs -n kubeflow
+Error from server (NotFound): services "seaweedfs" not found   # ← service inexistant
+```
+
+---
+
+#### Fix permanent (vérifié ✅)
+
+Le fix crée **deux alias DNS** sous forme de Services Kubernetes dans le namespace `kubeflow`, qui redirigent les deux endpoints problématiques vers le MinIO fonctionnel (`minio-service.default`). Aucune recompilation du pipeline n'est nécessaire.
+
+Un script prêt à l'emploi est disponible dans le dépôt :
+
+```bash
+bash ~/monitoring-ia/scripts/fix_kfp_artifact_store.sh
+```
+
+**Ce que fait le script (étape par étape) :**
+
+**Étape 1 — Service alias `seaweedfs` dans `kubeflow`**
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweedfs
+  namespace: kubeflow
+spec:
+  type: ExternalName
+  externalName: minio-service.default.svc.cluster.local
+  ports:
+  - name: s3
+    port: 9000
+    targetPort: 9000
+EOF
+```
+
+→ `seaweedfs.kubeflow:9000` résout désormais vers MinIO (`default` namespace).
+
+**Étape 2 — Service alias `minio-service` dans `kubeflow`**
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-service
+  namespace: kubeflow
+spec:
+  type: ExternalName
+  externalName: minio-service.default.svc.cluster.local
+  ports:
+  - name: s3
+    port: 9000
+    targetPort: 9000
+EOF
+```
+
+→ `minio-service.kubeflow:9000` résout également vers MinIO.
+
+**Étape 3 — Secret credentials dans `kubeflow`**
+
+```bash
+kubectl create secret generic mlpipeline-minio-artifact \
+  --from-literal=accesskey=minioadmin \
+  --from-literal=secretkey=minioadmin \
+  -n kubeflow \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+**Étape 4 — Créer le bucket `mlpipeline` dans MinIO**
+
+```bash
+kubectl run mc-fix --rm -it --image=minio/mc --restart=Never -- \
+  bash -c "
+    mc alias set minio http://minio-service.default.svc.cluster.local:9000 minioadmin minioadmin --api S3v4 && \
+    mc mb --ignore-existing minio/mlpipeline && \
+    mc ls minio/"
+```
+
+**Étape 5 — Redémarrer le workflow-controller**
+
+```bash
+kubectl rollout restart deployment workflow-controller -n kubeflow
+kubectl rollout status deployment workflow-controller -n kubeflow --timeout=60s
+```
+
+**Vérification finale :**
+
+```bash
+kubectl get svc -n kubeflow | grep -E "seaweedfs|minio"
+# Attendu :
+# minio-service   ExternalName   <none>   minio-service.default.svc.cluster.local   9000/TCP   ...
+# seaweedfs       ExternalName   <none>   minio-service.default.svc.cluster.local   9000/TCP   ...
+```
+
+---
+
+#### Pourquoi ce fix est permanent
+
+Les Services Kubernetes de type `ExternalName` sont des objets persistants dans etcd. Ils survivent aux redémarrages de pods, aux rollouts, et même aux relancements du cluster Minikube (tant que la configuration est réappliquée). Tout pipeline futur qui tentera de contacter `seaweedfs.kubeflow:9000` sera automatiquement redirigé vers MinIO sans aucune modification du code Python.
+
+```
+Avant le fix :
+  launcher_v2.go → seaweedfs.kubeflow:9000 → ❌ NXDOMAIN / i/o timeout
+
+Après le fix :
+  launcher_v2.go → seaweedfs.kubeflow:9000
+                        ↓ (ExternalName DNS)
+                   minio-service.default.svc.cluster.local:9000 → ✅ MinIO
+```
+
+> [!NOTE]
+> Les avertissements `pip` sur les dépendances `kfp` manquantes et le warning **Python 3.7 end-of-life** dans les logs du conteneur sont sans relation avec ce timeout. Ce sont des messages cosmétiques de l'image d'exécution KFP.
+
 `Failed to upload output artifact "model"` ou `"executor-logs"` … `Put "http://seaweedfs.kubeflow:9000/.../mlpipeline/..."` … **`i/o timeout`**.
 
 **Cause :** Les **artefacts de pipeline** (fichiers produits par le composant, métadonnées, logs exécuteur) sont envoyés vers le **dépôt S3 interne** configuré pour Argo / Kubeflow Pipelines (souvent **SeaweedFS** dans le namespace `kubeflow`). Ce stockage est **distinct** du MinIO que vous utilisez pour **MLflow** (`minio-service.default`). Si SeaweedFS est indisponible, surchargé, ou injoignable depuis les pods de workflow (réseau, NetworkPolicy), les `PutObject` expirent et le step est marqué en échec même si l'entraînement a réussi.
