@@ -16,7 +16,6 @@ Ce fichier est conçu pour être compilé et exécuté par Kubeflow Pipelines.
 
 from kfp import dsl, compiler
 from kfp import kubernetes
-from kubernetes.client.models import V1EnvVar
 
 # Import des composants depuis les fichiers locaux
 from train_model import train_model
@@ -79,12 +78,16 @@ def log_clustering_pipeline(
     # Le KFP v2 Launcher lit AWS_ENDPOINT_URL au niveau du pod pour savoir
     # où uploader les executor-logs. Sans cette variable il tente SeaweedFS
     # (seaweedfs.kubeflow:9000) qui est injoignable → timeout fatal.
+    #
+    # IMPORTANT : set_env_variable() n'accepte que des string literals à la
+    # compilation. Les pipeline parameters sont des PipelineChannel objects
+    # → on hardcode les valeurs d'infra (identiques aux defaults du pipeline).
     def _inject_s3_env(task):
         """Redirige le KFP Launcher vers MinIO pour l'upload des executor-logs."""
-        task.set_env_variable("AWS_ENDPOINT_URL", minio_endpoint)
-        task.set_env_variable("AWS_ACCESS_KEY_ID", aws_access_key)
-        task.set_env_variable("AWS_SECRET_ACCESS_KEY", aws_secret_key)
-        task.set_env_variable("MLFLOW_S3_ENDPOINT_URL", minio_endpoint)
+        task.set_env_variable("AWS_ENDPOINT_URL",        "http://minio-service.default.svc.cluster.local:9000")
+        task.set_env_variable("AWS_ACCESS_KEY_ID",       "minioadmin")
+        task.set_env_variable("AWS_SECRET_ACCESS_KEY",   "minioadmin")
+        task.set_env_variable("MLFLOW_S3_ENDPOINT_URL",  "http://minio-service.default.svc.cluster.local:9000")
         return task
 
     # ── Step 1 : Entraînement ────────────────────────────────────────
