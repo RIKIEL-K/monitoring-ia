@@ -57,7 +57,9 @@ EXPOSE 5001
 CMD ["mlflow", "models", "serve", "-m", "models:/{model_name}/{model_version}", "-h", "0.0.0.0", "-p", "5001", "--env-manager=local"]
 """
 
-    artifacts_dir = "/artifacts"
+    # Dockerfile de référence écrit dans /tmp (lisible via les logs du pod)
+    # Note : le PVC /artifacts est monté en lecture seule par le SA non-root (uid 8737)
+    artifacts_dir = "/tmp/kfp-deploy-artifacts"
     os.makedirs(artifacts_dir, exist_ok=True)
     safe_name = model_name.replace("/", "-")
     dockerfile_path = os.path.join(

@@ -74,14 +74,6 @@ def log_clustering_pipeline(
         4. deploy_model     : artefact Dockerfile sur PVC + rolling update (image)
     """
 
-    # ── Helper : injecte les variables S3 sur un pod KFP ────────────
-    # Le KFP v2 Launcher lit AWS_ENDPOINT_URL au niveau du pod pour savoir
-    # où uploader les executor-logs. Sans cette variable il tente SeaweedFS
-    # (seaweedfs.kubeflow:9000) qui est injoignable → timeout fatal.
-    #
-    # IMPORTANT : set_env_variable() n'accepte que des string literals à la
-    # compilation. Les pipeline parameters sont des PipelineChannel objects
-    # → on hardcode les valeurs d'infra (identiques aux defaults du pipeline).
     def _inject_s3_env(task):
         """Redirige le KFP Launcher vers MinIO pour l'upload des executor-logs."""
         task.set_env_variable("AWS_ENDPOINT_URL",        "http://minio-service.default.svc.cluster.local:9000")
@@ -151,12 +143,6 @@ def log_clustering_pipeline(
     )
     _inject_s3_env(deploy_task)
     deploy_task.after(validate_task)
-
-    kubernetes.mount_pvc(
-        deploy_task,
-        pvc_name=deploy_artifacts_pvc_name,
-        mount_path="/artifacts",
-    )
 
 
 # ── Compilation du pipeline en YAML ──────────────────────────────────
