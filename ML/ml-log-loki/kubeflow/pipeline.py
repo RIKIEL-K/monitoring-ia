@@ -16,6 +16,7 @@ Ce fichier est conçu pour être compilé et exécuté par Kubeflow Pipelines.
 
 from kfp import dsl, compiler
 from kfp import kubernetes
+from kubernetes.client.models import V1EnvVar
 
 # Import des composants depuis les fichiers locaux
 from train_model import train_model
@@ -74,6 +75,18 @@ def log_clustering_pipeline(
         4. deploy_model     : artefact Dockerfile sur PVC + rolling update (image)
     """
 
+    # ── Helper : injecte les variables S3 sur un pod KFP ────────────
+    # Le KFP v2 Launcher lit AWS_ENDPOINT_URL au niveau du pod pour savoir
+    # où uploader les executor-logs. Sans cette variable il tente SeaweedFS
+    # (seaweedfs.kubeflow:9000) qui est injoignable → timeout fatal.
+    def _inject_s3_env(task):
+        """Redirige le KFP Launcher vers MinIO pour l'upload des executor-logs."""
+        task.set_env_variable("AWS_ENDPOINT_URL", minio_endpoint)
+        task.set_env_variable("AWS_ACCESS_KEY_ID", aws_access_key)
+        task.set_env_variable("AWS_SECRET_ACCESS_KEY", aws_secret_key)
+        task.set_env_variable("MLFLOW_S3_ENDPOINT_URL", minio_endpoint)
+        return task
+
     # ── Step 1 : Entraînement ────────────────────────────────────────
     train_task = train_model(
         mlflow_tracking_uri=mlflow_tracking_uri,
@@ -91,6 +104,7 @@ def log_clustering_pipeline(
         k_range=k_range,
         model_name=model_name,
     )
+    _inject_s3_env(train_task)
 
     # Mount PVC to the training task
     kubernetes.mount_pvc(
@@ -108,6 +122,7 @@ def log_clustering_pipeline(
         run_id=train_task.outputs['Output'],
         model_name=model_name,
     )
+    _inject_s3_env(register_task)
 
     validate_task = validate_model(
         mlflow_tracking_uri=mlflow_tracking_uri,
@@ -115,6 +130,7 @@ def log_clustering_pipeline(
         anomaly_rate_min=anomaly_rate_min,
         anomaly_rate_max=anomaly_rate_max,
     )
+    _inject_s3_env(validate_task)
     validate_task.after(register_task)
 
     deploy_task = deploy_model(
@@ -130,6 +146,7 @@ def log_clustering_pipeline(
         base_image=serving_base_image,
         image_tag=serving_image_tag,
     )
+    _inject_s3_env(deploy_task)
     deploy_task.after(validate_task)
 
     kubernetes.mount_pvc(
