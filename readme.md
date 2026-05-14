@@ -734,9 +734,15 @@ Après le fix :
 
 ---
 
-### F. Étape `deploy-model` : erreur `403 Forbidden` — `pipeline-runner` ne peut pas patcher les Deployments
+### F. Étape `deploy-model` : erreurs `403 Forbidden` puis `404 Not Found` — RBAC + Deployment inexistant (vérifié ✅)
 
-**Symptôme :** L'étape `deploy_model` échoue avec une `ApiException (403)` lors de la tentative de lecture ou de patch du Deployment Kubernetes :
+Cette étape a nécessité **deux corrections successives** avant de fonctionner. Les voici documentées dans l'ordre.
+
+---
+
+#### F.1 — Erreur `403 Forbidden` : RBAC manquant
+
+**Symptôme :**
 
 ```
 kubernetes.client.exceptions.ApiException: (403)
@@ -747,30 +753,18 @@ message: "deployments.apps \"log-clustering-serving\" is forbidden:
   in the namespace \"default\""
 ```
 
----
-
-#### Cause racine
-
-Le composant `deploy_model` appelle l'API Kubernetes (`apps_v1.read_namespaced_deployment` puis `patch_namespaced_deployment`) pour déclencher un rolling update du Deployment de serving. Ces appels s'exécutent avec l'identité du **ServiceAccount** `pipeline-runner` (namespace `kubeflow`).
-
-Par défaut, ce SA n'a **aucun droit** sur les ressources du namespace `default`. Kubernetes refuse donc la requête avec un code HTTP 403.
+**Cause :** Le composant `deploy_model` s'exécute avec l'identité du ServiceAccount `pipeline-runner` (namespace `kubeflow`). Ce SA n'a par défaut **aucun droit** sur les ressources du namespace `default`. Kubernetes refuse toute lecture ou écriture sur les Deployments avec HTTP 403.
 
 > [!IMPORTANT]
-> Ce n'est pas un bug du code Python — c'est une restriction **RBAC** (Role-Based Access Control) de Kubernetes. Le fix se fait **une seule fois** au niveau du cluster, via un manifeste YAML.
+> Ce n'est pas un bug du code Python — c'est une restriction **RBAC** de Kubernetes. Le fix se fait **une seule fois** au niveau du cluster.
 
----
-
-#### Fix permanent (vérifié ✅)
-
-Un manifeste RBAC est disponible dans le dépôt. Il crée :
-- Un **Role** dans le namespace `default` autorisant `get`, `list`, `patch`, `update` sur les `deployments`
-- Un **RoleBinding** liant le SA `pipeline-runner` (namespace `kubeflow`) à ce Role
+**Fix — appliquer le manifeste RBAC :**
 
 ```bash
 kubectl apply -f manifests/pipeline-runner-deploy-rbac.yaml
 ```
 
-**Contenu du manifeste `manifests/pipeline-runner-deploy-rbac.yaml` :**
+Contenu du manifeste (`manifests/pipeline-runner-deploy-rbac.yaml`) :
 
 ```yaml
 # Role : droits sur les Deployments dans "default"
@@ -782,7 +776,7 @@ metadata:
 rules:
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  verbs: ["get", "list", "patch", "update"]
+  verbs: ["get", "list", "create", "patch", "update"]   # "create" requis pour l'upsert (§F.2)
 
 ---
 
@@ -802,39 +796,90 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-**Vérification :**
+**Vérification des droits :**
 
 ```bash
-# Confirmer que le Role et le RoleBinding existent
 kubectl get role,rolebinding -n default | grep pipeline-runner
 
-# Tester les droits (doit retourner "yes")
 kubectl auth can-i get deployments \
-  --as=system:serviceaccount:kubeflow:pipeline-runner \
-  -n default
+  --as=system:serviceaccount:kubeflow:pipeline-runner -n default
+# → yes ✅
 
-kubectl auth can-i patch deployments \
-  --as=system:serviceaccount:kubeflow:pipeline-runner \
-  -n default
+kubectl auth can-i create deployments \
+  --as=system:serviceaccount:kubeflow:pipeline-runner -n default
+# → yes ✅
 ```
 
 ---
 
-#### Pourquoi ce fix est permanent
+#### F.2 — Erreur `404 Not Found` : Deployment inexistant + pattern Upsert
 
-Les objets RBAC (`Role` et `RoleBinding`) sont persistants dans etcd au même titre que les Services. Une fois appliqués, ils restent actifs pour tous les runs futurs du pipeline sans aucune modification de code.
+**Symptôme** (après correction du RBAC) :
 
 ```
-Avant le fix :
-  deploy_model pod
-  (SA: pipeline-runner@kubeflow)
-    → GET deployments/log-clustering-serving (default) → 403 Forbidden
+kubernetes.client.exceptions.ApiException: (404)
+Reason: Not Found
+message: "deployments.apps \"log-clustering-serving\" not found"
+```
 
-Après le fix :
-  deploy_model pod
-  (SA: pipeline-runner@kubeflow) ──RoleBinding──► Role pipeline-runner-deployer
-    → GET/PATCH deployments/log-clustering-serving (default) → 200 OK ✅
+**Cause :** Le code original faisait un `read_namespaced_deployment()` puis un `patch_namespaced_deployment()`. Si le Deployment `log-clustering-serving` n'a jamais été créé dans le namespace `default`, la lecture retourne 404 et le composant plante — même avec les bons droits RBAC.
+
+**Fix — pattern Upsert dans `deploy_model.py` :**
+
+Le composant a été réécrit pour gérer les deux cas (création + mise à jour) en un seul chemin de code :
+
+```python
+try:
+    dep = apps_v1.read_namespaced_deployment(deployment_name, deployment_namespace)
+
+    # CAS 1 : Deployment existant → patch de l'image uniquement (rolling update)
+    idx = next((i for i, c in enumerate(dep.spec.template.spec.containers)
+                if c.name == container_name), None)
+    patch = [{"op": "replace",
+              "path": f"/spec/template/spec/containers/{idx}/image",
+              "value": new_image}]
+    apps_v1.patch_namespaced_deployment(
+        name=deployment_name, namespace=deployment_namespace,
+        body=patch, content_type="application/json-patch+json",
+    )
+    action = "patché (rolling update déclenché)"
+
+except ApiException as e:
+    if e.status != 404:
+        raise  # 403, 500... → on propage
+
+    # CAS 2 : Deployment absent → création complète avec toutes les env vars
+    apps_v1.create_namespaced_deployment(
+        namespace=deployment_namespace,
+        body=client.V1Deployment(...)   # spec complète : image, ports, env MLflow/MinIO
+    )
+    action = "créé (premier déploiement)"
+```
+
+---
+
+#### Résumé des deux corrections et ordre d'application
+
+| Ordre | Erreur | Cause | Fix |
+|---|---|---|---|
+| **1** | `403 Forbidden` | SA `pipeline-runner` sans droits sur `deployments/default` | `kubectl apply -f manifests/pipeline-runner-deploy-rbac.yaml` |
+| **2** | `404 Not Found` | Deployment `log-clustering-serving` inexistant | Pattern Upsert dans `deploy_model.py` (crée ou patche) |
+
+```
+Flux de décision du composant deploy_model (après fix) :
+
+  read_namespaced_deployment()
+        │
+        ├── 200 OK  → Deployment existant
+        │            → patch image uniquement (rolling update) ✅
+        │
+        └── 404     → Deployment absent
+                     → create_namespaced_deployment() (spec complète) ✅
+
+  Toute autre erreur (403, 500...) → propagée normalement
 ```
 
 > [!NOTE]
-> Si le Deployment `log-clustering-serving` n'existe pas encore dans le namespace `default`, le step échouera avec une `ApiException (404)`. Créez-le au préalable avec `kubectl apply -f manifests/model-deployment.yaml`.
+> Les deux fixes sont **permanents** : le Role/RoleBinding RBAC persiste dans etcd, et le code upsert de `deploy_model.py` est versionné dans le dépôt. Le pipeline fonctionne désormais quel que soit l'état initial du cluster — premier déploiement ou mise à jour.
+
+
