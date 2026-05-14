@@ -218,6 +218,15 @@ deploymentSpec:
           ).\")\n\n    return (\n        f\"Mod\xE8le {model_name} v{model_version}\
           \ \u2192 {deployment_namespace}/\"\n        f\"{deployment_name} (image\
           \ {new_image})\"\n    )\n\n"
+        env:
+        - name: AWS_ENDPOINT_URL
+          value: http://minio-service.default.svc.cluster.local:9000
+        - name: AWS_ACCESS_KEY_ID
+          value: minioadmin
+        - name: AWS_SECRET_ACCESS_KEY
+          value: minioadmin
+        - name: MLFLOW_S3_ENDPOINT_URL
+          value: http://minio-service.default.svc.cluster.local:9000
         image: python:3.12-slim
     exec-register-model:
       container:
@@ -289,6 +298,15 @@ deploymentSpec:
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    return str(result.version)\n\
           \n"
+        env:
+        - name: AWS_ENDPOINT_URL
+          value: http://minio-service.default.svc.cluster.local:9000
+        - name: AWS_ACCESS_KEY_ID
+          value: minioadmin
+        - name: AWS_SECRET_ACCESS_KEY
+          value: minioadmin
+        - name: MLFLOW_S3_ENDPOINT_URL
+          value: http://minio-service.default.svc.cluster.local:9000
         image: python:3.7
     exec-train-model:
       container:
@@ -589,6 +607,15 @@ deploymentSpec:
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n        return run_id\n\
           \n"
+        env:
+        - name: AWS_ENDPOINT_URL
+          value: http://minio-service.default.svc.cluster.local:9000
+        - name: AWS_ACCESS_KEY_ID
+          value: minioadmin
+        - name: AWS_SECRET_ACCESS_KEY
+          value: minioadmin
+        - name: MLFLOW_S3_ENDPOINT_URL
+          value: http://minio-service.default.svc.cluster.local:9000
         image: python:3.7
     exec-validate-model:
       container:
@@ -656,6 +683,15 @@ deploymentSpec:
           D\xE9tail: {validation_result.get('reason', '')}\")\n\n    if validation_result[\"\
           decision\"] != \"PASSED\":\n        raise RuntimeError(out)\n\n    return\
           \ out\n\n"
+        env:
+        - name: AWS_ENDPOINT_URL
+          value: http://minio-service.default.svc.cluster.local:9000
+        - name: AWS_ACCESS_KEY_ID
+          value: minioadmin
+        - name: AWS_SECRET_ACCESS_KEY
+          value: minioadmin
+        - name: MLFLOW_S3_ENDPOINT_URL
+          value: http://minio-service.default.svc.cluster.local:9000
         image: python:3.7
 pipelineInfo:
   description: "Pipeline de clustering de logs Loki (TF-IDF + K-Means). Train \u2192\
