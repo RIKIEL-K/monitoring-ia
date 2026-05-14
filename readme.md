@@ -731,3 +731,110 @@ Après le fix :
 
 > [!NOTE]
 > Les avertissements `pip` sur les dépendances `kfp` manquantes et le warning **Python 3.7 end-of-life** dans les logs du conteneur sont sans relation avec ce timeout. Ce sont des messages cosmétiques de l'image d'exécution KFP.
+
+---
+
+### F. Étape `deploy-model` : erreur `403 Forbidden` — `pipeline-runner` ne peut pas patcher les Deployments
+
+**Symptôme :** L'étape `deploy_model` échoue avec une `ApiException (403)` lors de la tentative de lecture ou de patch du Deployment Kubernetes :
+
+```
+kubernetes.client.exceptions.ApiException: (403)
+Reason: Forbidden
+message: "deployments.apps \"log-clustering-serving\" is forbidden:
+  User \"system:serviceaccount:kubeflow:pipeline-runner\"
+  cannot get resource \"deployments\" in API group \"apps\"
+  in the namespace \"default\""
+```
+
+---
+
+#### Cause racine
+
+Le composant `deploy_model` appelle l'API Kubernetes (`apps_v1.read_namespaced_deployment` puis `patch_namespaced_deployment`) pour déclencher un rolling update du Deployment de serving. Ces appels s'exécutent avec l'identité du **ServiceAccount** `pipeline-runner` (namespace `kubeflow`).
+
+Par défaut, ce SA n'a **aucun droit** sur les ressources du namespace `default`. Kubernetes refuse donc la requête avec un code HTTP 403.
+
+> [!IMPORTANT]
+> Ce n'est pas un bug du code Python — c'est une restriction **RBAC** (Role-Based Access Control) de Kubernetes. Le fix se fait **une seule fois** au niveau du cluster, via un manifeste YAML.
+
+---
+
+#### Fix permanent (vérifié ✅)
+
+Un manifeste RBAC est disponible dans le dépôt. Il crée :
+- Un **Role** dans le namespace `default` autorisant `get`, `list`, `patch`, `update` sur les `deployments`
+- Un **RoleBinding** liant le SA `pipeline-runner` (namespace `kubeflow`) à ce Role
+
+```bash
+kubectl apply -f manifests/pipeline-runner-deploy-rbac.yaml
+```
+
+**Contenu du manifeste `manifests/pipeline-runner-deploy-rbac.yaml` :**
+
+```yaml
+# Role : droits sur les Deployments dans "default"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pipeline-runner-deployer
+  namespace: default
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "patch", "update"]
+
+---
+
+# RoleBinding : lie pipeline-runner (kubeflow) au Role ci-dessus
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipeline-runner-deployer-binding
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner
+  namespace: kubeflow
+roleRef:
+  kind: Role
+  name: pipeline-runner-deployer
+  apiGroup: rbac.authorization.k8s.io
+```
+
+**Vérification :**
+
+```bash
+# Confirmer que le Role et le RoleBinding existent
+kubectl get role,rolebinding -n default | grep pipeline-runner
+
+# Tester les droits (doit retourner "yes")
+kubectl auth can-i get deployments \
+  --as=system:serviceaccount:kubeflow:pipeline-runner \
+  -n default
+
+kubectl auth can-i patch deployments \
+  --as=system:serviceaccount:kubeflow:pipeline-runner \
+  -n default
+```
+
+---
+
+#### Pourquoi ce fix est permanent
+
+Les objets RBAC (`Role` et `RoleBinding`) sont persistants dans etcd au même titre que les Services. Une fois appliqués, ils restent actifs pour tous les runs futurs du pipeline sans aucune modification de code.
+
+```
+Avant le fix :
+  deploy_model pod
+  (SA: pipeline-runner@kubeflow)
+    → GET deployments/log-clustering-serving (default) → 403 Forbidden
+
+Après le fix :
+  deploy_model pod
+  (SA: pipeline-runner@kubeflow) ──RoleBinding──► Role pipeline-runner-deployer
+    → GET/PATCH deployments/log-clustering-serving (default) → 200 OK ✅
+```
+
+> [!NOTE]
+> Si le Deployment `log-clustering-serving` n'existe pas encore dans le namespace `default`, le step échouera avec une `ApiException (404)`. Créez-le au préalable avec `kubectl apply -f manifests/model-deployment.yaml`.
