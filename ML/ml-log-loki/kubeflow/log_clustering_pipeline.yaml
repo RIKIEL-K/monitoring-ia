@@ -653,36 +653,36 @@ deploymentSpec:
           \ (exprim\xE9s en %).\n\n    Returns:\n        JSON string avec decision\
           \ PASSED / FAILED et d\xE9tails.\n\n    Raises:\n        RuntimeError: si\
           \ FAILED (bloque le pipeline avant deploy_model).\n    \"\"\"\n    import\
-          \ requests\n\n    base = mlflow_tracking_uri.rstrip(\"/\")\n    print(f\"\
-          Validation du run MLflow: {run_id}\")\n    print(\n        f\"Plage acceptable\
-          \ pour anomaly_rate (agr\xE9g\xE9e en %): \"\n        f\"{anomaly_rate_min}%\
-          \ \u2013 {anomaly_rate_max}%\"\n    )\n\n    api_url = f\"{base}/api/2.0/mlflow/runs/get\"\
-          \n    response = requests.get(api_url, params={\"run_id\": run_id}, timeout=60)\n\
-          \    response.raise_for_status()\n\n    run_data = response.json()\n   \
-          \ metrics = run_data[\"run\"][\"data\"][\"metrics\"]\n    metrics_dict =\
-          \ {}\n    for m in metrics:\n        key = m[\"key\"]\n        raw = m[\"\
-          value\"]\n        metrics_dict[key] = float(raw)\n\n    print(f\"M\xE9triques\
-          \ r\xE9cup\xE9r\xE9es: {metrics_dict}\")\n\n    anomaly_rate = metrics_dict.get(\"\
-          anomaly_rate\")\n    if anomaly_rate is None:\n        validation_result\
-          \ = {\n            \"decision\": \"FAILED\",\n            \"reason\": \"\
-          m\xE9trique anomaly_rate absente du run\",\n            \"metrics\": metrics_dict,\n\
-          \        }\n    else:\n        anomaly_pct = anomaly_rate * 100.0\n    \
-          \    if anomaly_rate_min <= anomaly_pct <= anomaly_rate_max:\n         \
-          \   decision = \"PASSED\"\n            reason = (\n                f\"Taux\
-          \ anomaly_rate {anomaly_pct:.2f}% dans la plage \"\n                f\"\
-          [{anomaly_rate_min}%, {anomaly_rate_max}%]\"\n            )\n        else:\n\
-          \            decision = \"FAILED\"\n            reason = (\n           \
-          \     f\"Taux anomaly_rate {anomaly_pct:.2f}% hors plage \"\n          \
-          \      f\"[{anomaly_rate_min}%, {anomaly_rate_max}%]\"\n            )\n\
-          \        validation_result = {\n            \"decision\": decision,\n  \
-          \          \"reason\": reason,\n            \"anomaly_rate\": anomaly_pct,\n\
-          \            \"threshold_min_pct\": anomaly_rate_min,\n            \"threshold_max_pct\"\
-          : anomaly_rate_max,\n            \"metrics\": metrics_dict,\n        }\n\
-          \n    out = json.dumps(validation_result, ensure_ascii=False)\n    print(f\"\
-          R\xE9sultat validation: {validation_result['decision']}\")\n    print(f\"\
-          D\xE9tail: {validation_result.get('reason', '')}\")\n\n    if validation_result[\"\
-          decision\"] != \"PASSED\":\n        raise RuntimeError(out)\n\n    return\
-          \ out\n\n"
+          \ json\n    import requests\n\n    base = mlflow_tracking_uri.rstrip(\"\
+          /\")\n    print(f\"Validation du run MLflow: {run_id}\")\n    print(\n \
+          \       f\"Plage acceptable pour anomaly_rate (agr\xE9g\xE9e en %): \"\n\
+          \        f\"{anomaly_rate_min}% \u2013 {anomaly_rate_max}%\"\n    )\n\n\
+          \    api_url = f\"{base}/api/2.0/mlflow/runs/get\"\n    response = requests.get(api_url,\
+          \ params={\"run_id\": run_id}, timeout=60)\n    response.raise_for_status()\n\
+          \n    run_data = response.json()\n    metrics = run_data[\"run\"][\"data\"\
+          ][\"metrics\"]\n    metrics_dict = {}\n    for m in metrics:\n        key\
+          \ = m[\"key\"]\n        raw = m[\"value\"]\n        metrics_dict[key] =\
+          \ float(raw)\n\n    print(f\"M\xE9triques r\xE9cup\xE9r\xE9es: {metrics_dict}\"\
+          )\n\n    anomaly_rate = metrics_dict.get(\"anomaly_rate\")\n    if anomaly_rate\
+          \ is None:\n        validation_result = {\n            \"decision\": \"\
+          FAILED\",\n            \"reason\": \"m\xE9trique anomaly_rate absente du\
+          \ run\",\n            \"metrics\": metrics_dict,\n        }\n    else:\n\
+          \        anomaly_pct = anomaly_rate * 100.0\n        if anomaly_rate_min\
+          \ <= anomaly_pct <= anomaly_rate_max:\n            decision = \"PASSED\"\
+          \n            reason = (\n                f\"Taux anomaly_rate {anomaly_pct:.2f}%\
+          \ dans la plage \"\n                f\"[{anomaly_rate_min}%, {anomaly_rate_max}%]\"\
+          \n            )\n        else:\n            decision = \"FAILED\"\n    \
+          \        reason = (\n                f\"Taux anomaly_rate {anomaly_pct:.2f}%\
+          \ hors plage \"\n                f\"[{anomaly_rate_min}%, {anomaly_rate_max}%]\"\
+          \n            )\n        validation_result = {\n            \"decision\"\
+          : decision,\n            \"reason\": reason,\n            \"anomaly_rate\"\
+          : anomaly_pct,\n            \"threshold_min_pct\": anomaly_rate_min,\n \
+          \           \"threshold_max_pct\": anomaly_rate_max,\n            \"metrics\"\
+          : metrics_dict,\n        }\n\n    out = json.dumps(validation_result, ensure_ascii=False)\n\
+          \    print(f\"R\xE9sultat validation: {validation_result['decision']}\"\
+          )\n    print(f\"D\xE9tail: {validation_result.get('reason', '')}\")\n\n\
+          \    if validation_result[\"decision\"] != \"PASSED\":\n        raise RuntimeError(out)\n\
+          \n    return out\n\n"
         env:
         - name: AWS_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
