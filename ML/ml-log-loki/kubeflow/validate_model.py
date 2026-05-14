@@ -5,8 +5,6 @@ Lit les métriques du run (notamment anomaly_rate) et refuse le déploiement
 si les seuils ne sont pas respectés (RuntimeError → échec du step KFP).
 """
 
-import json
-
 from kfp import dsl
 
 
@@ -33,6 +31,7 @@ def validate_model(
     Raises:
         RuntimeError: si FAILED (bloque le pipeline avant deploy_model).
     """
+    import json
     import requests
 
     base = mlflow_tracking_uri.rstrip("/")
