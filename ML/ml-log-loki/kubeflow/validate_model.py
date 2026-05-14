@@ -10,7 +10,10 @@ import json
 from kfp import dsl
 
 
-@dsl.component(packages_to_install=["requests"])
+@dsl.component(
+    base_image="python:3.9",
+    packages_to_install=["requests"]
+)
 def validate_model(
     mlflow_tracking_uri: str,
     run_id: str,

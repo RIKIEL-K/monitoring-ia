@@ -11,6 +11,7 @@ from kfp import dsl
 
 
 @dsl.component(
+    base_image="python:3.9",
     packages_to_install=[
         "mlflow",
         "scikit-learn",
