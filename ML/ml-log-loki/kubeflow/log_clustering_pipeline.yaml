@@ -196,21 +196,24 @@ deploymentSpec:
           ENV AWS_SECRET_ACCESS_KEY={aws_secret_key}\nENV MODEL_NAME={model_name}\n\
           ENV MODEL_VERSION={model_version}\nEXPOSE 5001\nCMD [\"mlflow\", \"models\"\
           , \"serve\", \"-m\", \"models:/{model_name}/{model_version}\", \"-h\", \"\
-          0.0.0.0\", \"-p\", \"5001\", \"--env-manager=local\"]\n\"\"\"\n\n    artifacts_dir\
-          \ = \"/artifacts\"\n    os.makedirs(artifacts_dir, exist_ok=True)\n    safe_name\
-          \ = model_name.replace(\"/\", \"-\")\n    dockerfile_path = os.path.join(\n\
-          \        artifacts_dir, f\"Dockerfile.{safe_name}.v{model_version}\"\n \
-          \   )\n    with open(dockerfile_path, \"w\", encoding=\"utf-8\") as f:\n\
-          \        f.write(dockerfile_content)\n    print(f\"Dockerfile enregistr\xE9\
-          \ sur le PVC: {dockerfile_path}\")\n\n    config.load_incluster_config()\n\
-          \    apps_v1 = client.AppsV1Api()\n\n    dep = apps_v1.read_namespaced_deployment(deployment_name,\
-          \ deployment_namespace)\n    containers = dep.spec.template.spec.containers\n\
-          \    idx = None\n    for i, c in enumerate(containers):\n        if c.name\
-          \ == container_name:\n            idx = i\n            break\n    if idx\
-          \ is None:\n        names = [c.name for c in containers]\n        raise\
-          \ ValueError(\n            f\"Conteneur {container_name!r} introuvable.\
-          \ Conteneurs: {names}\"\n        )\n\n    patch = [\n        {\n       \
-          \     \"op\": \"replace\",\n            \"path\": f\"/spec/template/spec/containers/{idx}/image\"\
+          0.0.0.0\", \"-p\", \"5001\", \"--env-manager=local\"]\n\"\"\"\n\n    # Dockerfile\
+          \ de r\xE9f\xE9rence \xE9crit dans /tmp (lisible via les logs du pod)\n\
+          \    # Note : le PVC /artifacts est mont\xE9 en lecture seule par le SA\
+          \ non-root (uid 8737)\n    artifacts_dir = \"/tmp/kfp-deploy-artifacts\"\
+          \n    os.makedirs(artifacts_dir, exist_ok=True)\n    safe_name = model_name.replace(\"\
+          /\", \"-\")\n    dockerfile_path = os.path.join(\n        artifacts_dir,\
+          \ f\"Dockerfile.{safe_name}.v{model_version}\"\n    )\n    with open(dockerfile_path,\
+          \ \"w\", encoding=\"utf-8\") as f:\n        f.write(dockerfile_content)\n\
+          \    print(f\"Dockerfile enregistr\xE9 sur le PVC: {dockerfile_path}\")\n\
+          \n    config.load_incluster_config()\n    apps_v1 = client.AppsV1Api()\n\
+          \n    dep = apps_v1.read_namespaced_deployment(deployment_name, deployment_namespace)\n\
+          \    containers = dep.spec.template.spec.containers\n    idx = None\n  \
+          \  for i, c in enumerate(containers):\n        if c.name == container_name:\n\
+          \            idx = i\n            break\n    if idx is None:\n        names\
+          \ = [c.name for c in containers]\n        raise ValueError(\n          \
+          \  f\"Conteneur {container_name!r} introuvable. Conteneurs: {names}\"\n\
+          \        )\n\n    patch = [\n        {\n            \"op\": \"replace\"\
+          ,\n            \"path\": f\"/spec/template/spec/containers/{idx}/image\"\
           ,\n            \"value\": new_image,\n        }\n    ]\n    apps_v1.patch_namespaced_deployment(\n\
           \        name=deployment_name,\n        namespace=deployment_namespace,\n\
           \        body=patch,\n        content_type=\"application/json-patch+json\"\
@@ -917,10 +920,6 @@ platforms:
   kubernetes:
     deploymentSpec:
       executors:
-        exec-deploy-model:
-          pvcMount:
-          - componentInputParameter: deploy_artifacts_pvc_name
-            mountPath: /artifacts
         exec-train-model:
           pvcMount:
           - constant: training-data-pvc
