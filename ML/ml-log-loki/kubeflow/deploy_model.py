@@ -8,8 +8,6 @@ Prérequis cluster: le pod du pipeline doit pouvoir patcher les Deployments
 (Role + RoleBinding sur le ServiceAccount d'exécution des pipelines).
 """
 
-import os
-
 from kfp import dsl
 
 
@@ -36,6 +34,7 @@ def deploy_model(
     Le Dockerfile généré sous /artifacts documente la commande mlflow models serve
     pour models:/{model_name}/{model_version} (build image hors pipeline, ex. CI).
     """
+    import os
     from kubernetes import client, config
 
     new_image = f"{base_image}:{image_tag}"
