@@ -36,13 +36,14 @@ def deploy_model(
     """
     import os
     from kubernetes import client, config
+    from kubernetes.client.exceptions import ApiException
 
     new_image = f"{base_image}:{image_tag}"
     print(f"Déploiement modèle {model_name} version {model_version}")
     print(f"Cible: {deployment_namespace}/{deployment_name}, conteneur={container_name}")
     print(f"Nouvelle image: {new_image}")
 
-    # Dockerfile de référence (aligné sur le Dockerfile racine du repo, versionné)
+    # ── Dockerfile de référence (traçabilité dans les logs du pod) ────────────
     dockerfile_content = f"""# Généré par le pipeline Kubeflow (ml-log-loki)
 FROM python:3.12-slim
 WORKDIR /app
@@ -56,51 +57,99 @@ ENV MODEL_VERSION={model_version}
 EXPOSE 5001
 CMD ["mlflow", "models", "serve", "-m", "models:/{model_name}/{model_version}", "-h", "0.0.0.0", "-p", "5001", "--env-manager=local"]
 """
-
-    # Dockerfile de référence écrit dans /tmp (lisible via les logs du pod)
-    # Note : le PVC /artifacts est monté en lecture seule par le SA non-root (uid 8737)
     artifacts_dir = "/tmp/kfp-deploy-artifacts"
     os.makedirs(artifacts_dir, exist_ok=True)
     safe_name = model_name.replace("/", "-")
-    dockerfile_path = os.path.join(
-        artifacts_dir, f"Dockerfile.{safe_name}.v{model_version}"
-    )
+    dockerfile_path = os.path.join(artifacts_dir, f"Dockerfile.{safe_name}.v{model_version}")
     with open(dockerfile_path, "w", encoding="utf-8") as f:
         f.write(dockerfile_content)
-    print(f"Dockerfile enregistré sur le PVC: {dockerfile_path}")
+    print(f"Dockerfile de référence : {dockerfile_path}")
 
+    # ── Connexion à l'API Kubernetes (in-cluster) ─────────────────────────────
     config.load_incluster_config()
     apps_v1 = client.AppsV1Api()
 
-    dep = apps_v1.read_namespaced_deployment(deployment_name, deployment_namespace)
-    containers = dep.spec.template.spec.containers
-    idx = None
-    for i, c in enumerate(containers):
-        if c.name == container_name:
-            idx = i
-            break
-    if idx is None:
-        names = [c.name for c in containers]
-        raise ValueError(
-            f"Conteneur {container_name!r} introuvable. Conteneurs: {names}"
+    # ── Pattern UPSERT : crée le Deployment s'il n'existe pas, le patche sinon ─
+    try:
+        dep = apps_v1.read_namespaced_deployment(deployment_name, deployment_namespace)
+
+        # ── CAS 1 : Deployment existant → patch de l'image uniquement ──────────
+        containers = dep.spec.template.spec.containers
+        idx = next(
+            (i for i, c in enumerate(containers) if c.name == container_name),
+            None
         )
+        if idx is None:
+            names = [c.name for c in containers]
+            raise ValueError(
+                f"Conteneur {container_name!r} introuvable dans le Deployment. "
+                f"Conteneurs disponibles : {names}"
+            )
 
-    patch = [
-        {
-            "op": "replace",
-            "path": f"/spec/template/spec/containers/{idx}/image",
-            "value": new_image,
-        }
-    ]
-    apps_v1.patch_namespaced_deployment(
-        name=deployment_name,
-        namespace=deployment_namespace,
-        body=patch,
-        content_type="application/json-patch+json",
-    )
-    print("Deployment patché (rolling update déclenché).")
+        patch = [{"op": "replace",
+                  "path": f"/spec/template/spec/containers/{idx}/image",
+                  "value": new_image}]
+        apps_v1.patch_namespaced_deployment(
+            name=deployment_name,
+            namespace=deployment_namespace,
+            body=patch,
+            content_type="application/json-patch+json",
+        )
+        action = "patché (rolling update déclenché)"
 
-    return (
+    except ApiException as e:
+        if e.status != 404:
+            raise  # Autre erreur (403, 500...) → on propage
+
+        # ── CAS 2 : Deployment absent → création complète ──────────────────────
+        print(f"  Deployment '{deployment_name}' introuvable → création...")
+        deployment_manifest = client.V1Deployment(
+            api_version="apps/v1",
+            kind="Deployment",
+            metadata=client.V1ObjectMeta(
+                name=deployment_name,
+                namespace=deployment_namespace,
+                labels={"app": deployment_name, "managed-by": "kubeflow-pipeline"},
+            ),
+            spec=client.V1DeploymentSpec(
+                replicas=1,
+                selector=client.V1LabelSelector(
+                    match_labels={"app": deployment_name}
+                ),
+                template=client.V1PodTemplateSpec(
+                    metadata=client.V1ObjectMeta(
+                        labels={"app": deployment_name}
+                    ),
+                    spec=client.V1PodSpec(
+                        containers=[
+                            client.V1Container(
+                                name=container_name,
+                                image=new_image,
+                                ports=[client.V1ContainerPort(container_port=5001)],
+                                env=[
+                                    client.V1EnvVar("MLFLOW_TRACKING_URI",   mlflow_tracking_uri),
+                                    client.V1EnvVar("MLFLOW_S3_ENDPOINT_URL", minio_endpoint),
+                                    client.V1EnvVar("AWS_ACCESS_KEY_ID",     aws_access_key),
+                                    client.V1EnvVar("AWS_SECRET_ACCESS_KEY", aws_secret_key),
+                                    client.V1EnvVar("MODEL_NAME",            model_name),
+                                    client.V1EnvVar("MODEL_VERSION",         model_version),
+                                ],
+                            )
+                        ]
+                    ),
+                ),
+            ),
+        )
+        apps_v1.create_namespaced_deployment(
+            namespace=deployment_namespace,
+            body=deployment_manifest,
+        )
+        action = "créé (premier déploiement)"
+
+    result = (
         f"Modèle {model_name} v{model_version} → {deployment_namespace}/"
-        f"{deployment_name} (image {new_image})"
+        f"{deployment_name} [{action}] (image {new_image})"
     )
+    print(f"\n[SUCCESS] {result}")
+    return result
+
