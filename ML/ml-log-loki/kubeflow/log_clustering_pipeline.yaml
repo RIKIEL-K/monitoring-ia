@@ -307,7 +307,7 @@ deploymentSpec:
           value: minioadmin
         - name: MLFLOW_S3_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
-        image: python:3.7
+        image: python:3.9
     exec-train-model:
       container:
         args:
@@ -616,7 +616,7 @@ deploymentSpec:
           value: minioadmin
         - name: MLFLOW_S3_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
-        image: python:3.7
+        image: python:3.9
     exec-validate-model:
       container:
         args:
@@ -692,7 +692,7 @@ deploymentSpec:
           value: minioadmin
         - name: MLFLOW_S3_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
-        image: python:3.7
+        image: python:3.9
 pipelineInfo:
   description: "Pipeline de clustering de logs Loki (TF-IDF + K-Means). Train \u2192\
     \ Registry \u2192 validation MLflow \u2192 patch d\xE9ploiement serving."
