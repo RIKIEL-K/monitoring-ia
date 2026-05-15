@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    environment:
+      # Active la réception des traces au format natif OpenTelemetry (OTLP)
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      # --- Ports OTLP (pour recevoir les traces depuis l'EC2 cible) ---
+      - "4317:4317" # OTLP gRPC (utilisé par notre otel-collector-config.yaml)
+      - "4318:4318" # OTLP HTTP
+      
+      - "16686:16686"
+    
+      - "14250:14250"
+      - "14268:14268"
+      - "9411:9411" 
+    
+    restart: always
