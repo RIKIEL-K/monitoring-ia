@@ -1,0 +1,30 @@
+site_name: Déploiement MLOps sur Kubernetes
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+  palette:
+    primary: deep purple
+    accent: teal
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+
+nav:
+  - Accueil: index.md
+  - Infrastructure:
+      - MinIO: infrastructure/minio.md
+      - MLflow: infrastructure/mlflow.md
+  - Entraînement:
+      - Local & Promotion: training/local-training.md
+      - Batch Job (Kubernetes): training/k8s-training.md
+  - Serving:
+      - Conteneurisation (Docker): serving/docker.md
+      - Déploiement K8s: serving/kubernetes.md
+  - Accès et Routage:
+      - Tunnel SSH: access/ssh-tunnel.md
+  - Bonnes Pratiques: best-practices.md
