@@ -1,6 +1,6 @@
 # Troubleshooting — Vue d'ensemble
 
-Cette section regroupe toutes les erreurs rencontrées lors du déploiement et de l'utilisation de la stack MLOps sur Kubernetes (Kubeflow) (Minikube sur une EC2).
+Cette section regroupe toutes les erreurs rencontrées lors du déploiement et de l'utilisation de la stack MLOps sur Kubeflow k8s (Minikube sur une EC2).
 
 ## Méthode de diagnostic générale
 

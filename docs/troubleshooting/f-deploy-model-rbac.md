@@ -19,10 +19,10 @@ message: "deployments.apps \"log-clustering-serving\" is forbidden:
 
 ### Cause
 
-Le composant `deploy_model` s'exécute avec l'identité du ServiceAccount `pipeline-runner` (namespace `kubeflow`). Ce SA n'a par défaut **aucun droit** sur les ressources du namespace `default`. Kubernetes refuse toute lecture ou écriture sur les Deployments avec HTTP 403.
+Le composant `deploy_model` s'exécute avec l'identité du ServiceAccount `pipeline-runner` (namespace `kubeflow`). Ce SA n'a par défaut **aucun droit** sur les ressources du namespace `default`. Kubeflow k8s refuse toute lecture ou écriture sur les Deployments avec HTTP 403.
 
 !!! important "Ce n'est pas un bug Python"
-    C'est une restriction **RBAC** de Kubernetes. Le fix se fait **une seule fois** au niveau du cluster, pas dans le code.
+    C'est une restriction **RBAC** de Kubeflow k8s. Le fix se fait **une seule fois** au niveau du cluster, pas dans le code.
 
 ### Fix — Appliquer le manifeste RBAC
 

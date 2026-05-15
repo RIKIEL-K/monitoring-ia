@@ -12,7 +12,7 @@ Le pod reste bloqué avec le statut `Init:CreateContainerConfigError`.
 
 ## Cause
 
-Kubernetes bloque le conteneur interne d'Argo (`argoexec`) car il tente de se lancer avec les droits **root**, ce qui viole la politique de sécurité de Kubeflow.
+Kubeflow k8s bloque le conteneur interne d'Argo (`argoexec`) car il tente de se lancer avec les droits **root**, ce qui viole la politique de sécurité de Kubeflow.
 
 ## Solution
 

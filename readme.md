@@ -1,4 +1,4 @@
-﻿
+
 Ce guide détaille le déploiement d'une infrastructure MLOps minimale sur Kubernetes pour stocker les artefacts (MinIO) et centraliser le tracking (MLflow).
 
 ## Prérequis : Installer le client MinIO (`mc`) sur l'EC2

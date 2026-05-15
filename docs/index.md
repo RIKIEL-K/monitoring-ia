@@ -6,7 +6,7 @@ Bienvenue dans la documentation de l'infrastructure **MLOps** du projet `monitor
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                     Kubernetes (Minikube / EC2)      │
+│                     Kubeflow k8s (Minikube / EC2)    │
 │                                                     │
 │  ┌──────────┐   ┌──────────┐   ┌────────────────┐  │
 │  │  MinIO   │   │  MLflow  │   │    Kubeflow    │  │

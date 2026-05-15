@@ -57,7 +57,7 @@ logs = pd.DataFrame({"message": [
 print(model.predict(logs))
 ```
 
-## Déploiement en production (Kubernetes)
+## Déploiement en production (Kubeflow k8s)
 
 ```bash
 # Construire l'image Docker

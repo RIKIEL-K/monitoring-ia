@@ -2,7 +2,7 @@
 
 ## Prérequis
 
-- Kubernetes (Minikube) opérationnel sur l'EC2
+- Kubeflow k8s (Minikube) opérationnel sur l'EC2
 - Client `mc` (MinIO Client) installé sur l'EC2
 
 ```bash

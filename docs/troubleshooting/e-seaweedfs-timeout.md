@@ -25,7 +25,7 @@ Deux problèmes combinés dans la configuration du cluster :
 | **2** | Le `workflow-controller-configmap` pointe sur `minio-service.kubeflow:9000` | MinIO est dans le namespace `default`, pas `kubeflow` → résolution DNS cassée |
 
 !!! important "Le `set_env_variable()` est inefficace ici"
-    Le launcher KFP v2 (binaire Go `launcher_v2.go`) lit sa configuration S3 **exclusivement** depuis le ConfigMap Kubernetes `workflow-controller-configmap`. Toute tentative de redirection via `set_env_variable()` dans `pipeline.py` est **sans effet** sur ce binaire.
+    Le launcher KFP v2 (binaire Go `launcher_v2.go`) lit sa configuration S3 **exclusivement** depuis le ConfigMap Kubeflow k8s `workflow-controller-configmap`. Toute tentative de redirection via `set_env_variable()` dans `pipeline.py` est **sans effet** sur ce binaire.
 
 ## Diagnostic
 

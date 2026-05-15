@@ -23,7 +23,7 @@ MinIO S3 (artefacts binaires)
 | 2 | `register_model()` | Reçoit le `run_id`, enregistre le modèle PyFunc dans le Model Registry, retourne `model_version` |
 
 !!! note "Conteneurs isolés"
-    Chaque composant s'exécute dans un **conteneur Docker isolé** dans Kubernetes. Toutes les dépendances sont auto-installées via `packages_to_install`.
+    Chaque composant s'exécute dans un **conteneur Docker isolé** dans Kubeflow k8s. Toutes les dépendances sont auto-installées via `packages_to_install`.
 
 ## Structure des fichiers
 

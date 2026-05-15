@@ -11,7 +11,7 @@ kubectl delete pvc training-data-pvc -n kubeflow
 
 ## Cause
 
-Kubernetes place un cadenas de sécurité (`finalizer`) sur les volumes lorsqu'il pense qu'un pod l'utilise encore — même si le pod a planté ou a été supprimé.
+Kubeflow k8s place un cadenas de sécurité (`finalizer`) sur les volumes lorsqu'il pense qu'un pod l'utilise encore — même si le pod a planté ou a été supprimé.
 
 ## Solution
 
