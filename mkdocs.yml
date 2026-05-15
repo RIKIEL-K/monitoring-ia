@@ -1,0 +1,16 @@
+site_name: Monitoring IA Docs
+theme:
+  name: material
+  palette:
+    primary: indigo
+    accent: deep purple
+
+nav:
+  - Accueil: index.md
+  - Analyse des Métriques (Prometheus):
+      - Détection d'anomalies (IsolationForest): metrics/isolation_forest.md
+      - Prévision (Prophet): metrics/prophet.md
+  - Analyse des Logs (Loki):
+      - Clustering de Logs: logs/clustering.md
+  - Déploiement & MLOps:
+      - MLflow & MinIO sur EC2: mlops/mlflow_minio_ec2.md
