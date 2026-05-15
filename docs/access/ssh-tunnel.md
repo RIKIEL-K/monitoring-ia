@@ -1,33 +1,32 @@
 # Accès distant via Tunnel SSH
 
-Pour accéder aux interfaces web (MinIO, MLflow, Kubeflow) depuis votre navigateur local alors que la stack tourne sur une EC2 distante, la méthode la plus fiable est le **tunnel SSH**.
+Pour accéder aux interfaces web (MinIO, MLflow, Kubeflow) depuis votre navigateur local alors que la stack tourne sur une EC2 (Utiliser une EC2 c5a.4xlargesur aws ) distante, la méthode la plus fiable est le **tunnel SSH**.
 
-## Étape 1 — Sur votre instance EC2
+## Étape 1 : Sur votre instance EC2
 
-Relayer les ports du cluster K8s vers le `localhost` de l'EC2 :
+Relayer les ports du cluster Kubeflow k8s vers le `localhost` de l'EC2 :
 
 ```bash
-kubectl port-forward --address 127.0.0.1 svc/minio-service 30901:9001 &
-kubectl port-forward --address 127.0.0.1 svc/mlflow-service 30500:5000 &
+nohup kubectl port-forward --address 127.0.0.1 -n kubeflow svc/ml-pipeline-ui 8080:80 > kfp.log 2>&1 &
+
+nohup kubectl port-forward --address 127.0.0.1 -n default svc/mlflow-service 5000:5000 > mlflow.log 2>&1 &
+
+nohup kubectl port-forward --address 127.0.0.1 -n default svc/minio-service 9000:9000 9001:9001 > minio.log 2>&1 &
 ```
 
-## Étape 2 — Sur votre machine locale (Windows)
+## Étape 2 : Sur votre machine locale (Windows)
 
 Ouvrez un terminal PowerShell et connectez-vous avec la commande suivante :
 
 ```bash
-ssh -i "C:\chemin\vers\votre_cle.pem" \
-  -L 30901:127.0.0.1:30901 \
-  -L 30500:127.0.0.1:30500 \
-  -L 30502:127.0.0.1:30502 \
-  ubuntu@<IP_PUBLIQUE_DE_VOTRE_EC2>
+ssh -i "C:\chemin\vers\votre_cle.pem" -L 8080:127.0.0.1:8080 -L 5000:127.0.0.1:5000 -L 9000:127.0.0.1:9000 -L 9001:127.0.0.1:9001 ubuntu@<IP_PUBLIQUE_DE_VOTRE_EC2>
 ```
 
 Remplacez :
 - `C:\chemin\vers\votre_cle.pem` par le chemin de votre clé SSH
 - `<IP_PUBLIQUE_DE_VOTRE_EC2>` par l'adresse IP publique de votre instance
 
-## Étape 3 — Dans votre navigateur
+## Étape 3 : Dans votre navigateur
 
 Tant que la fenêtre SSH reste ouverte, votre tunnel fonctionne. Accédez aux UIs :
 
@@ -39,16 +38,3 @@ Tant que la fenêtre SSH reste ouverte, votre tunnel fonctionne. Accédez aux UI
 
 !!! warning "Gardez la fenêtre SSH ouverte"
     Si vous fermez le terminal SSH, le tunnel est coupé et les UIs deviennent inaccessibles.
-
-## Ajouter d'autres ports
-
-Pour ajouter le port de l'API de serving (`30501`) :
-
-```bash
-ssh -i "C:\chemin\vers\votre_cle.pem" \
-  -L 30901:127.0.0.1:30901 \
-  -L 30500:127.0.0.1:30500 \
-  -L 30502:127.0.0.1:30502 \
-  -L 30501:127.0.0.1:30501 \
-  ubuntu@<IP_PUBLIQUE_DE_VOTRE_EC2>
-```

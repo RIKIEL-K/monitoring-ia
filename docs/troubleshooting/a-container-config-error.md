@@ -1,4 +1,4 @@
-# A — `Init:CreateContainerConfigError` (runAsNonRoot)
+# `Init:CreateContainerConfigError` (runAsNonRoot)
 
 ## Symptôme
 

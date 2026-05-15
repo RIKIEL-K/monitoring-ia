@@ -1,4 +1,4 @@
-# G — Impossible de créer un Run — MySQL charset & utilisateur
+# Impossible de créer un Run — MySQL charset & utilisateur
 
 ## Symptôme
 
@@ -10,9 +10,8 @@ Trois problèmes MySQL combinés empêchent Kubeflow Pipelines de fonctionner :
 
 | # | Problème | Impact |
 |---|---|---|
-| **1** | Base `mlpipeline` en charset `utf8mb3` au lieu de `utf8mb4` | Crash sur les caractères spéciaux (emojis, noms de paramètres) |
-| **2** | Tables `runs` / `pipelines` non converties en `utf8mb4` | Erreur 3988 ou 1366 lors de l'insertion |
-| **3** | Utilisateur `kubeflow` absent ou avec mauvais plugin d'auth | Connexion refusée par `ml-pipeline` |
+| **1** | Tables `runs` / `pipelines` non converties en `utf8mb4` | Erreur 3988 ou 1366 lors de l'insertion |
+| **2** | Utilisateur `kubeflow` absent ou avec mauvais plugin d'auth | Connexion refusée par `ml-pipeline` |
 
 !!! important "Appliquer les 3 corrections ensemble et dans l'ordre"
     Un seul oubli suffit à maintenir le bug.

@@ -1,6 +1,6 @@
-site_name: Monitoring IA — Documentation MLOps
-site_description: Documentation complète de l'infrastructure MLOps (Kubeflow, MLflow, MinIO) sur Kubernetes
-site_author: Équipe IA
+site_name: Documentation MLOps
+site_description: Documentation complète de l'infrastructure MLOps
+site_author: Rikiel Yk
 site_url: http://localhost:8000
 
 theme:
@@ -73,7 +73,7 @@ nav:
     - Kubeflow Pipelines: deployment/kubeflow.md
     - Script automatisé: deployment/deploy_stack.md
   - Pipelines ML:
-    - Log Clustering (TF-IDF + K-Means): pipelines/log-clustering.md
+    - Logs Clustering: pipelines/log-clustering.md
     - Prédictions & Serving: pipelines/serving.md
   - Accès distant:
     - Tunnel SSH: access/ssh-tunnel.md

@@ -1,18 +1,6 @@
 # Troubleshooting — Vue d'ensemble
 
-Cette section regroupe toutes les erreurs rencontrées lors du déploiement et de l'utilisation de la stack MLOps sur Kubernetes (Minikube / EC2).
-
-## Tableau de bord des erreurs
-
-| Réf. | Erreur | Composant | Statut |
-|---|---|---|---|
-| [A](a-container-config-error.md) | `Init:CreateContainerConfigError` — `runAsNonRoot` | Argo / Kubeflow | ✅ Résolu |
-| [B](b-mysql-collation.md) | `Error 3988` — Collation `utf8mb3` / emojis | MySQL / Kubeflow | ✅ Résolu |
-| [C](c-pvc-bloque.md) | PVC / PV bloqué — suppression impossible | Kubernetes Storage | ✅ Résolu |
-| [D](d-file-not-found.md) | `FileNotFoundError: /data/...` dans le pipeline | Kubeflow / Minikube | ✅ Résolu |
-| [E](e-seaweedfs-timeout.md) | `seaweedfs.kubeflow:9000: i/o timeout` — upload artefacts | KFP Launcher v2 | ✅ Résolu |
-| [F](f-deploy-model-rbac.md) | `403 Forbidden` + `404 Not Found` — étape `deploy-model` | RBAC / Kubernetes | ✅ Résolu |
-| [G](g-mysql-charset.md) | Impossible de créer un Run — MySQL charset / utilisateur | MySQL / Kubeflow | ✅ Résolu |
+Cette section regroupe toutes les erreurs rencontrées lors du déploiement et de l'utilisation de la stack MLOps sur Kubernetes (Kubeflow) (Minikube sur une EC2).
 
 ## Méthode de diagnostic générale
 

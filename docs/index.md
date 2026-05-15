@@ -1,4 +1,4 @@
-# Monitoring IA — Documentation MLOps
+# Documentation MLOps
 
 Bienvenue dans la documentation de l'infrastructure **MLOps** du projet `monitoring-ia`. Cette documentation couvre le déploiement, la configuration, l'utilisation des pipelines et la résolution des erreurs courantes.
 

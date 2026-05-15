@@ -1,4 +1,4 @@
-# B — Erreur MySQL Collation `utf8mb3` / Error 3988
+# Erreur MySQL Collation `utf8mb3` / Error 3988
 
 ## Symptôme
 
@@ -18,25 +18,15 @@ Le code des composants étant stocké dans la base MySQL (dans le `PipelineRunti
 
 **1. Supprimer tous les emojis** de vos fichiers Python :
 
-```bash
-# Fichiers concernés :
-# - ml/ml-log-loki/kubeflow/train_model.py
-# - ml/ml-log-loki/kubeflow/register_model.py
-# - ml/ml-log-loki/kubeflow/pipeline.py
-```
-
 Remplacez les emojis par du texte ASCII équivalent. Exemples :
 
 | Avant | Après |
 |---|---|
 | `📦 Installation des dépendances` | `[INSTALL] Installation des dépendances` |
-| `🤖 Entraînement du modèle` | `[TRAIN] Entraînement du modèle` |
-| `✅ Succès` | `[SUCCESS] Succès` |
 
 **2. Recompiler le pipeline :**
 
 ```bash
-cd ml/ml-log-loki/kubeflow
 python pipeline.py
 # → Regénère log_clustering_pipeline.yaml
 ```
