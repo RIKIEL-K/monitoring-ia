@@ -7,23 +7,31 @@ services:
       - "8080:8080"
     volumes:
       - ./target-logs:/app/logs
+    # --- OpenTelemetry Collector (systemd sur l'EC2 hôte) ---
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+      - OTEL_SERVICE_NAME=dummy-target-app
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-  alloy:
-    image: grafana/alloy:latest
-    volumes:
-      - ./target-logs:/var/log/app-logs:ro
-      - ./config.alloy:/etc/alloy/config.alloy
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/host/root:ro
-    env_file:
-      - .env
-    ports:
-      - "12345:12345"
-    command:
-      - run
-      - /etc/alloy/config.alloy
-      - --server.http.listen-addr=0.0.0.0:12345
-    pid: host
-    depends_on:
-      - dummy-app
+  # --- Grafana Alloy (désactivé — remplacé par OpenTelemetry Collector) ---
+  # alloy:
+  #   image: grafana/alloy:latest
+  #   volumes:
+  #     - ./target-logs:/var/log/app-logs:ro
+  #     - ./config.alloy:/etc/alloy/config.alloy
+  #     - /proc:/host/proc:ro
+  #     - /sys:/host/sys:ro
+  #     - /:/host/root:ro
+  #   env_file:
+  #     - .env
+  #   ports:
+  #     - "12345:12345"
+  #   command:
+  #     - run
+  #     - /etc/alloy/config.alloy
+  #     - --server.http.listen-addr=0.0.0.0:12345
+  #   pid: host
+  #   depends_on:
+  #     - dummy-app

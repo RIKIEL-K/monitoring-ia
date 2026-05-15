@@ -1,0 +1,88 @@
+
+receivers:
+
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  filelog:
+    include: [/home/ubuntu/monitoring-ia/ec2-target-app/target-logs/*.log]
+    start_at: end
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: "%Y-%m-%dT%H:%M:%S.%f%z"
+        severity:
+          parse_from: attributes.level
+
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu: {}
+      memory: {}
+      disk: {}
+      network: {}
+      filesystem: {}
+
+processors:
+  # Ajoute les métadonnées de la ressource (hostname, OS, etc.)
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 2s
+    override: false
+
+  # Regroupe les données avant export pour optimiser les appels réseau
+  batch:
+    send_batch_size: 1000
+    timeout: 5s
+
+exporters:
+  # ------------------------------------------------------------------
+  # Traces → Jaeger (format OTLP gRPC natif depuis Jaeger 1.35+)
+  # ------------------------------------------------------------------
+  otlp/jaeger:
+    endpoint: "http://${env:JAEGER_IP}:4317"
+    tls:
+      insecure: true
+
+  # ------------------------------------------------------------------
+  # Métriques → Prometheus (remote write)
+  # ------------------------------------------------------------------
+  prometheusremotewrite:
+    endpoint: "http://${env:OBSERVABILITY_IP}:9090/api/v1/write"
+    tls:
+      insecure: true
+
+  # ------------------------------------------------------------------
+  # Logs → Loki
+  # (nécessite opentelemetry-collector-contrib)
+  # ------------------------------------------------------------------
+  loki:
+    endpoint: "http://${env:OBSERVABILITY_IP}:3100/loki/api/v1/push"
+
+service:
+  telemetry:
+    logs:
+      level: info
+
+  pipelines:
+    # --- Traces : Flask → OTEL Agent → Jaeger ---
+    traces:
+      receivers: [otlp]
+      processors: [resourcedetection, batch]
+      exporters: [otlp/jaeger]
+
+    # --- Métriques : Flask + hôte EC2 → OTEL Agent → Prometheus ---
+    metrics:
+      receivers: [otlp, hostmetrics]
+      processors: [resourcedetection, batch]
+      exporters: [prometheusremotewrite]
+
+    # --- Logs : Flask (fichier + OTLP) → OTEL Agent → Loki ---
+    logs:
+      receivers: [otlp, filelog]
+      processors: [resourcedetection, batch]
+      exporters: [loki]
