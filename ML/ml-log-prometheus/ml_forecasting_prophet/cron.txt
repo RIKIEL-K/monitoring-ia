@@ -1,0 +1,27 @@
+# =============================================================================
+# AIOps ML — Cron Jobs
+# =============================================================================
+# Installer avec : crontab -e  puis coller ce contenu
+# Vérifier avec  : crontab -l
+# =============================================================================
+
+# Env vars (cron ne charge pas .bashrc — adapter l'IP à votre EC2 Observabilité)
+PROMETHEUS_URL=http://<IP_PRIVEE_EC2_OBSERVABILITE>:9090
+MODEL_PATH=/home/ec2-user/monitoring-ia/ML/models/anomaly_model.pkl
+MODEL_DIR=/home/ec2-user/monitoring-ia/ML/models/prophet
+
+# --- IsolationForest ---
+
+# Entraînement (1x/jour à 3h)
+0 3 * * * cd /home/ec2-user/monitoring-ia/ML && /usr/bin/python3 train_model.py >> /var/log/ml/train.log 2>&1
+
+# Détection d'anomalies (toutes les 5 min)
+*/5 * * * * cd /home/ec2-user/monitoring-ia/ML && /usr/bin/python3 detect_anomalie.py >> /var/log/ml/detect.log 2>&1
+
+# --- Prophet ---
+
+# Entraînement Prophet (1x/jour à 4h)
+0 4 * * * cd /home/ec2-user/monitoring-ia/ML/ML_Prophet && /usr/bin/python3 train_forcasting_model.py >> /var/log/ml/train_prophet.log 2>&1
+
+# Prédictions + alertes (toutes les 15 min)
+*/15 * * * * cd /home/ec2-user/monitoring-ia/ML/ML_Prophet && /usr/bin/python3 forecast_metrics.py >> /var/log/ml/forecast.log 2>&1

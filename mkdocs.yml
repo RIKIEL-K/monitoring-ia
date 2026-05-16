@@ -1,0 +1,88 @@
+site_name: Documentation MLOps
+site_description: Documentation complète de l'infrastructure MLOps
+site_author: Rikiel Yk
+site_url: http://localhost:8000
+
+theme:
+  name: material
+  language: fr
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Passer en mode sombre
+    - scheme: slate
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Passer en mode clair
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    logo: material/kubernetes
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - announce.dismiss
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - tables
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+
+plugins:
+  - search:
+      lang: fr
+
+nav:
+  - Accueil: index.md
+  - Déploiement:
+    - Vue d'ensemble: deployment/overview.md
+    - MinIO: deployment/minio.md
+    - MLflow: deployment/mlflow.md
+    - Kubeflow Pipelines: deployment/kubeflow.md
+    - Script automatisé: deployment/deploy_stack.md
+  - Pipelines ML:
+    - Logs Clustering: pipelines/log-clustering.md
+    - Prédictions & Serving: pipelines/serving.md
+  - Accès distant:
+    - Tunnel SSH: access/ssh-tunnel.md
+  - Troubleshooting:
+    - Vue d'ensemble: troubleshooting/index.md
+    - A - Init CreateContainerConfigError: troubleshooting/a-container-config-error.md
+    - B - Erreur MySQL Collation (3988): troubleshooting/b-mysql-collation.md
+    - C - PVC / PV bloqué: troubleshooting/c-pvc-bloque.md
+    - D - FileNotFoundError dans le pipeline: troubleshooting/d-file-not-found.md
+    - E - Timeout SeaweedFS / Artefacts KFP: troubleshooting/e-seaweedfs-timeout.md
+    - F - Erreur 403 / 404 deploy-model: troubleshooting/f-deploy-model-rbac.md
+    - G - MySQL charset & utilisateur: troubleshooting/g-mysql-charset.md

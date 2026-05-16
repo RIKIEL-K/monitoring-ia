@@ -1,0 +1,46 @@
+# =============================================================================
+# pipeline-runner-deploy-rbac.yaml
+#
+# Accorde au ServiceAccount "pipeline-runner" (namespace kubeflow) les droits
+# nécessaires pour lire et patcher les Deployments dans le namespace "default".
+#
+# Requis par le composant deploy_model du pipeline Kubeflow, qui fait un
+# rolling update du Deployment "log-clustering-serving" via l'API Kubernetes.
+#
+# Application :
+#   kubectl apply -f manifests/pipeline-runner-deploy-rbac.yaml
+# =============================================================================
+
+# ── Role : droits sur les Deployments dans "default" ─────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pipeline-runner-deployer
+  namespace: default
+  labels:
+    app: kubeflow-pipeline
+    component: deploy-rbac
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "create", "patch", "update"]
+
+---
+
+# ── RoleBinding : lie pipeline-runner (kubeflow) au Role ci-dessus ───────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipeline-runner-deployer-binding
+  namespace: default
+  labels:
+    app: kubeflow-pipeline
+    component: deploy-rbac
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner
+  namespace: kubeflow            # SA dans kubeflow, droits dans default
+roleRef:
+  kind: Role
+  name: pipeline-runner-deployer
+  apiGroup: rbac.authorization.k8s.io
