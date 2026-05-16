@@ -18,6 +18,9 @@ from kfp import dsl
         "pandas",
         "boto3",
         "numpy",
+        "opentelemetry-api==1.24.0",
+        "opentelemetry-sdk==1.24.0",
+        "opentelemetry-exporter-otlp==1.24.0",
     ]
 )
 def train_model(
@@ -163,6 +166,82 @@ def train_model(
 
         df["cluster_label"] = df["cluster_id"].map(cluster_labels)
         return df, cluster_labels, top_words
+
+    def setup_opentelemetry(experiment_name: str):
+        import logging
+        from opentelemetry import trace, metrics
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+        from opentelemetry.sdk.metrics import MeterProvider
+        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+        from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+        from opentelemetry._logs import set_logger_provider
+        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+        from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+        
+        endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+        
+        resource = Resource(attributes={
+            "service.name": "ml-log-clustering",
+            "experiment.name": experiment_name
+        })
+
+        tracer_provider = TracerProvider(resource=resource)
+        trace.set_tracer_provider(tracer_provider)
+        span_processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True))
+        tracer_provider.add_span_processor(span_processor)
+        tracer = trace.get_tracer("ml.anomaly.detector")
+
+        metric_reader = PeriodicExportingMetricReader(
+            OTLPMetricExporter(endpoint=endpoint, insecure=True)
+        )
+        meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+        metrics.set_meter_provider(meter_provider)
+        meter = metrics.get_meter("ml.anomaly.detector")
+
+        logger_provider = LoggerProvider(resource=resource)
+        set_logger_provider(logger_provider)
+        log_exporter = OTLPLogExporter(endpoint=endpoint, insecure=True)
+        logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
+        
+        handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
+        otel_logger = logging.getLogger("otel_ml_logger")
+        otel_logger.setLevel(logging.INFO)
+        if not otel_logger.handlers:
+            otel_logger.addHandler(handler)
+
+        return tracer, meter, otel_logger
+
+    def emit_anomaly_events(df, cluster_labels, top_words, tracer, meter, otel_logger):
+        from opentelemetry import trace
+        anomaly_counter = meter.create_counter(
+            "ml_anomaly_detected_total",
+            description="Nombre de logs identifiés comme anomalies par le modèle ML"
+        )
+
+        for cid, label in cluster_labels.items():
+            if "Erreurs Serveur" in label or "Accès Non Autorisés" in label:
+                cluster_data = df[df["cluster_id"] == cid]
+                anomaly_count = len(cluster_data)
+                
+                with tracer.start_as_current_span(f"ml_anomaly_detected_{cid}") as span:
+                    span.set_attribute("anomaly.type", label)
+                    span.set_attribute("anomaly.cluster_id", cid)
+                    span.set_attribute("anomaly.count", anomaly_count)
+                    
+                    trace_id = trace.format_trace_id(span.get_span_context().trace_id)
+                    
+                    anomaly_counter.add(anomaly_count, {"anomaly_type": label})
+                    
+                    terms = ", ".join(top_words[cid][:8])
+                    otel_logger.error(
+                        f"ML Anomaly Detected: {label}. Cluster {cid} contains {anomaly_count} events. Top terms: {terms}",
+                        extra={"trace_id": trace_id, "cluster_id": cid, "anomaly_count": anomaly_count}
+                    )
+                    print(f"   [OTLP] Émis {anomaly_count} anomalies de type '{label}' (TraceID: {trace_id})")
 
     # ── PyFunc model class (self-contained) ───────────────────────────
     class LogClusteringPipelineModel(mlflow.pyfunc.PythonModel):
@@ -328,6 +407,11 @@ def train_model(
         for cid, label in cluster_labels_map.items():
             mlflow.log_param(f"cluster_{cid}_label", label)
             print(f"  Cluster {cid}: {label}")
+
+        # ── Step 6.5 : OTLP Anomaly Events ───────────────────────────
+        print("\n[Step 6.5] Émission d'événements d'anomalies (OTLP)")
+        tracer, meter, otel_logger = setup_opentelemetry(experiment_name)
+        emit_anomaly_events(df, cluster_labels_map, top_words, tracer, meter, otel_logger)
 
         # Part des logs dans des clusters « Erreurs » (0–1), pour quality gate validate_model
         error_cluster_mask = df["cluster_label"].str.contains(

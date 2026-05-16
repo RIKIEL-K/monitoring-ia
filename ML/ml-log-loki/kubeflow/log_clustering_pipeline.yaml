@@ -20,6 +20,7 @@
 #    model_name: str [Default: 'log-clustering-kmeans']
 #    n_clusters: int [Default: 5.0]
 #    n_init: int [Default: 10.0]
+#    otel_exporter_otlp_endpoint: str [Default: 'http://<IP_EC2_APP>:4317']
 #    random_state: int [Default: 42.0]
 #    serving_base_image: str [Default: 'loki-kmeans-serve']
 #    serving_container_name: str [Default: 'serving']
@@ -161,10 +162,10 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'kubernetes'\
-          \ && \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'kubernetes'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -270,6 +271,8 @@ deploymentSpec:
           value: minioadmin
         - name: MLFLOW_S3_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://REPLACE_WITH_EC2_APP_IP:4317
         image: python:3.12-slim
     exec-register-model:
       container:
@@ -283,10 +286,10 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'boto3'\
-          \ && \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'boto3'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -350,6 +353,8 @@ deploymentSpec:
           value: minioadmin
         - name: MLFLOW_S3_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://REPLACE_WITH_EC2_APP_IP:4317
         image: python:3.9
     exec-train-model:
       container:
@@ -363,10 +368,11 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'scikit-learn'\
-          \ 'pandas' 'boto3' 'numpy' && \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'scikit-learn'\
+          \ 'pandas' 'boto3' 'numpy' 'opentelemetry-api==1.24.0' 'opentelemetry-sdk==1.24.0'\
+          \ 'opentelemetry-exporter-otlp==1.24.0'  &&  python3 -m pip install --quiet\
+          \ --no-warn-script-location 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -468,10 +474,62 @@ deploymentSpec:
           \           else:\n                label = f\"Op\xE9rations {top_component.capitalize()}\
           \ ({top_endpoint})\"\n\n            cluster_labels[cid] = label\n\n    \
           \    df[\"cluster_label\"] = df[\"cluster_id\"].map(cluster_labels)\n  \
-          \      return df, cluster_labels, top_words\n\n    # \u2500\u2500 PyFunc\
-          \ model class (self-contained) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+          \      return df, cluster_labels, top_words\n\n    def setup_opentelemetry(experiment_name:\
+          \ str):\n        import logging\n        from opentelemetry import trace,\
+          \ metrics\n        from opentelemetry.sdk.resources import Resource\n  \
+          \      from opentelemetry.sdk.trace import TracerProvider\n        from\
+          \ opentelemetry.sdk.trace.export import BatchSpanProcessor\n        from\
+          \ opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter\n\
+          \        from opentelemetry.sdk.metrics import MeterProvider\n        from\
+          \ opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader\n\
+          \        from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import\
+          \ OTLPMetricExporter\n        from opentelemetry._logs import set_logger_provider\n\
+          \        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler\n\
+          \        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor\n\
+          \        from opentelemetry.exporter.otlp.proto.grpc._log_exporter import\
+          \ OTLPLogExporter\n\n        endpoint = os.environ.get(\"OTEL_EXPORTER_OTLP_ENDPOINT\"\
+          , \"http://localhost:4317\")\n\n        resource = Resource(attributes={\n\
+          \            \"service.name\": \"ml-log-clustering\",\n            \"experiment.name\"\
+          : experiment_name\n        })\n\n        tracer_provider = TracerProvider(resource=resource)\n\
+          \        trace.set_tracer_provider(tracer_provider)\n        span_processor\
+          \ = BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True))\n\
+          \        tracer_provider.add_span_processor(span_processor)\n        tracer\
+          \ = trace.get_tracer(\"ml.anomaly.detector\")\n\n        metric_reader =\
+          \ PeriodicExportingMetricReader(\n            OTLPMetricExporter(endpoint=endpoint,\
+          \ insecure=True)\n        )\n        meter_provider = MeterProvider(resource=resource,\
+          \ metric_readers=[metric_reader])\n        metrics.set_meter_provider(meter_provider)\n\
+          \        meter = metrics.get_meter(\"ml.anomaly.detector\")\n\n        logger_provider\
+          \ = LoggerProvider(resource=resource)\n        set_logger_provider(logger_provider)\n\
+          \        log_exporter = OTLPLogExporter(endpoint=endpoint, insecure=True)\n\
+          \        logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))\n\
+          \n        handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)\n\
+          \        otel_logger = logging.getLogger(\"otel_ml_logger\")\n        otel_logger.setLevel(logging.INFO)\n\
+          \        if not otel_logger.handlers:\n            otel_logger.addHandler(handler)\n\
+          \n        return tracer, meter, otel_logger\n\n    def emit_anomaly_events(df,\
+          \ cluster_labels, top_words, tracer, meter, otel_logger):\n        from\
+          \ opentelemetry import trace\n        anomaly_counter = meter.create_counter(\n\
+          \            \"ml_anomaly_detected_total\",\n            description=\"\
+          Nombre de logs identifi\xE9s comme anomalies par le mod\xE8le ML\"\n   \
+          \     )\n\n        for cid, label in cluster_labels.items():\n         \
+          \   if \"Erreurs Serveur\" in label or \"Acc\xE8s Non Autoris\xE9s\" in\
+          \ label:\n                cluster_data = df[df[\"cluster_id\"] == cid]\n\
+          \                anomaly_count = len(cluster_data)\n\n                with\
+          \ tracer.start_as_current_span(f\"ml_anomaly_detected_{cid}\") as span:\n\
+          \                    span.set_attribute(\"anomaly.type\", label)\n     \
+          \               span.set_attribute(\"anomaly.cluster_id\", cid)\n      \
+          \              span.set_attribute(\"anomaly.count\", anomaly_count)\n\n\
+          \                    trace_id = trace.format_trace_id(span.get_span_context().trace_id)\n\
+          \n                    anomaly_counter.add(anomaly_count, {\"anomaly_type\"\
+          : label})\n\n                    terms = \", \".join(top_words[cid][:8])\n\
+          \                    otel_logger.error(\n                        f\"ML Anomaly\
+          \ Detected: {label}. Cluster {cid} contains {anomaly_count} events. Top\
+          \ terms: {terms}\",\n                        extra={\"trace_id\": trace_id,\
+          \ \"cluster_id\": cid, \"anomaly_count\": anomaly_count}\n             \
+          \       )\n                    print(f\"   [OTLP] \xC9mis {anomaly_count}\
+          \ anomalies de type '{label}' (TraceID: {trace_id})\")\n\n    # \u2500\u2500\
+          \ PyFunc model class (self-contained) \u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
-          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    class LogClusteringPipelineModel(mlflow.pyfunc.PythonModel):\n\
+          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    class LogClusteringPipelineModel(mlflow.pyfunc.PythonModel):\n\
           \        \"\"\"\n        Mod\xE8le MLflow customis\xE9 (PyFunc) qui encapsule\
           \ le nettoyage,\n        le TF-IDF, et le K-Means en un seul endpoint pr\xEA\
           t pour l'API REST.\n        \"\"\"\n\n        def __init__(self, vectorizer,\
@@ -584,24 +642,31 @@ deploymentSpec:
           \ top_words = label_clusters(\n            df, kmeans_model, feature_names\n\
           \        )\n\n        for cid, label in cluster_labels_map.items():\n  \
           \          mlflow.log_param(f\"cluster_{cid}_label\", label)\n         \
-          \   print(f\"  Cluster {cid}: {label}\")\n\n        # Part des logs dans\
-          \ des clusters \xAB Erreurs \xBB (0\u20131), pour quality gate validate_model\n\
-          \        error_cluster_mask = df[\"cluster_label\"].str.contains(\n    \
-          \        \"Erreurs\", case=False, na=False\n        )\n        anomaly_rate\
-          \ = float(error_cluster_mask.mean()) if len(df) > 0 else 0.0\n        mlflow.log_metric(\"\
-          anomaly_rate\", round(anomaly_rate, 6))\n        print(\n            f\"\
-          \  anomaly_rate (part logs clusters Erreurs): {anomaly_rate:.4f} \"\n  \
-          \          f\"({anomaly_rate * 100:.2f} %)\"\n        )\n\n        # \u2500\
-          \u2500 10. Export summary CSV \u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+          \   print(f\"  Cluster {cid}: {label}\")\n\n        # \u2500\u2500 Step\
+          \ 6.5 : OTLP Anomaly Events \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\n        print(\"\\n[Step 6.5]\
+          \ \xC9mission d'\xE9v\xE9nements d'anomalies (OTLP)\")\n        tracer,\
+          \ meter, otel_logger = setup_opentelemetry(experiment_name)\n        emit_anomaly_events(df,\
+          \ cluster_labels_map, top_words, tracer, meter, otel_logger)\n\n       \
+          \ # Part des logs dans des clusters \xAB Erreurs \xBB (0\u20131), pour quality\
+          \ gate validate_model\n        error_cluster_mask = df[\"cluster_label\"\
+          ].str.contains(\n            \"Erreurs\", case=False, na=False\n       \
+          \ )\n        anomaly_rate = float(error_cluster_mask.mean()) if len(df)\
+          \ > 0 else 0.0\n        mlflow.log_metric(\"anomaly_rate\", round(anomaly_rate,\
+          \ 6))\n        print(\n            f\"  anomaly_rate (part logs clusters\
+          \ Erreurs): {anomaly_rate:.4f} \"\n            f\"({anomaly_rate * 100:.2f}\
+          \ %)\"\n        )\n\n        # \u2500\u2500 10. Export summary CSV \u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
           \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
-          \u2500\u2500\u2500\u2500\n        print(\"\\n[Step 7] Exporting cluster\
-          \ summary\")\n        import tempfile\n\n        rows = []\n        for\
-          \ cid in range(kmeans_model.n_clusters):\n            cluster_data = df[df[\"\
-          cluster_id\"] == cid]\n            rows.append(\n                {\n   \
-          \                 \"ClusterID\": cid,\n                    \"Label\": cluster_labels_map.get(cid,\
-          \ \"Unknown\"),\n                    \"TopTerms\": \", \".join(top_words[cid][:8]),\n\
-          \                    \"ExampleLog\": (\n                        cluster_data[\"\
+          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n        print(\"\
+          \\n[Step 7] Exporting cluster summary\")\n        import tempfile\n\n  \
+          \      rows = []\n        for cid in range(kmeans_model.n_clusters):\n \
+          \           cluster_data = df[df[\"cluster_id\"] == cid]\n            rows.append(\n\
+          \                {\n                    \"ClusterID\": cid,\n          \
+          \          \"Label\": cluster_labels_map.get(cid, \"Unknown\"),\n      \
+          \              \"TopTerms\": \", \".join(top_words[cid][:8]),\n        \
+          \            \"ExampleLog\": (\n                        cluster_data[\"\
           message\"].iloc[0]\n                        if len(cluster_data) > 0\n \
           \                       else \"\"\n                    ),\n            \
           \        \"Count\": int(len(cluster_data)),\n                    \"Percentage\"\
@@ -659,6 +724,8 @@ deploymentSpec:
           value: minioadmin
         - name: MLFLOW_S3_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://REPLACE_WITH_EC2_APP_IP:4317
         image: python:3.9
     exec-validate-model:
       container:
@@ -672,10 +739,10 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'requests' &&\
-          \ \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'requests'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -735,6 +802,8 @@ deploymentSpec:
           value: minioadmin
         - name: MLFLOW_S3_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://REPLACE_WITH_EC2_APP_IP:4317
         image: python:3.9
 pipelineInfo:
   description: "Pipeline de clustering de logs Loki (TF-IDF + K-Means). Train \u2192\
@@ -937,6 +1006,10 @@ root:
         defaultValue: 10.0
         isOptional: true
         parameterType: NUMBER_INTEGER
+      otel_exporter_otlp_endpoint:
+        defaultValue: http://<IP_EC2_APP>:4317
+        isOptional: true
+        parameterType: STRING
       random_state:
         defaultValue: 42.0
         isOptional: true
@@ -954,7 +1027,7 @@ root:
         isOptional: true
         parameterType: STRING
 schemaVersion: 2.1.0
-sdkVersion: kfp-2.7.0
+sdkVersion: kfp-2.16.1
 ---
 platforms:
   kubernetes:
@@ -964,3 +1037,6 @@ platforms:
           pvcMount:
           - constant: training-data-pvc
             mountPath: /data
+            pvcNameParameter:
+              runtimeValue:
+                constant: training-data-pvc

@@ -63,6 +63,8 @@ def log_clustering_pipeline(
     serving_image_tag: str = "latest",
     # PVC où écrire les Dockerfiles de référence (même PVC que les données si besoin)
     deploy_artifacts_pvc_name: str = "training-data-pvc",
+    # OpenTelemetry
+    otel_exporter_otlp_endpoint: str = "http://<IP_EC2_APP>:4317",
 ):
     """
     Pipeline complet de clustering de logs Loki.
@@ -80,6 +82,7 @@ def log_clustering_pipeline(
         task.set_env_variable("AWS_ACCESS_KEY_ID",       "minioadmin")
         task.set_env_variable("AWS_SECRET_ACCESS_KEY",   "minioadmin")
         task.set_env_variable("MLFLOW_S3_ENDPOINT_URL",  "http://minio-service.default.svc.cluster.local:9000")
+        task.set_env_variable("OTEL_EXPORTER_OTLP_ENDPOINT", "http://REPLACE_WITH_EC2_APP_IP:4317")
         return task
 
     # ── Step 1 : Entraînement ────────────────────────────────────────
