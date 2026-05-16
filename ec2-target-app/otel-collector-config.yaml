@@ -40,11 +40,15 @@ processors:
     timeout: 5s
 
 exporters:
+  # Exporteur de debug pour afficher les traces dans la console
+  debug:
+    verbosity: detailed
+
   # ------------------------------------------------------------------
   # Traces → Jaeger (format OTLP gRPC natif depuis Jaeger 1.35+)
   # ------------------------------------------------------------------
   otlp/jaeger:
-    endpoint: "http://${env:JAEGER_IP}:4317"
+    endpoint: "${env:JAEGER_IP}:4317"
     tls:
       insecure: true
 
@@ -73,7 +77,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [resourcedetection, batch]
-      exporters: [otlp/jaeger]
+      exporters: [otlp/jaeger, debug]
 
     # --- Métriques : Flask + hôte EC2 → OTEL Agent → Prometheus ---
     metrics:

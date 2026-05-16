@@ -12,6 +12,8 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
       - OTEL_SERVICE_NAME=dummy-target-app
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_PYTHON_LOG_LEVEL=debug
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
