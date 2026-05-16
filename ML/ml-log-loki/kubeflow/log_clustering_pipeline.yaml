@@ -20,7 +20,7 @@
 #    model_name: str [Default: 'log-clustering-kmeans']
 #    n_clusters: int [Default: 5.0]
 #    n_init: int [Default: 10.0]
-#    otel_exporter_otlp_endpoint: str [Default: 'http://<IP_EC2_APP>:4317']
+#    otel_exporter_otlp_endpoint: str [Default: 'http://172.31.90.91:4317']
 #    random_state: int [Default: 42.0]
 #    serving_base_image: str [Default: 'loki-kmeans-serve']
 #    serving_container_name: str [Default: 'serving']
@@ -162,10 +162,10 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kubernetes'\
-          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
-          $0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'kubernetes'\
+          \ && \"$0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -272,7 +272,7 @@ deploymentSpec:
         - name: MLFLOW_S3_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: http://REPLACE_WITH_EC2_APP_IP:4317
+          value: http://172.31.90.91:4317
         image: python:3.12-slim
     exec-register-model:
       container:
@@ -286,10 +286,10 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'boto3'\
-          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
-          $0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'boto3'\
+          \ && \"$0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -354,7 +354,7 @@ deploymentSpec:
         - name: MLFLOW_S3_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: http://REPLACE_WITH_EC2_APP_IP:4317
+          value: http://172.31.90.91:4317
         image: python:3.9
     exec-train-model:
       container:
@@ -368,11 +368,11 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'scikit-learn'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'scikit-learn'\
           \ 'pandas' 'boto3' 'numpy' 'opentelemetry-api==1.24.0' 'opentelemetry-sdk==1.24.0'\
-          \ 'opentelemetry-exporter-otlp==1.24.0'  &&  python3 -m pip install --quiet\
-          \ --no-warn-script-location 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5;\
-          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+          \ 'opentelemetry-exporter-otlp==1.24.0' && \"$0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -725,7 +725,7 @@ deploymentSpec:
         - name: MLFLOW_S3_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: http://REPLACE_WITH_EC2_APP_IP:4317
+          value: http://172.31.90.91:4317
         image: python:3.9
     exec-validate-model:
       container:
@@ -739,10 +739,10 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'requests'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
-          $0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'requests' &&\
+          \ \"$0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -803,7 +803,7 @@ deploymentSpec:
         - name: MLFLOW_S3_ENDPOINT_URL
           value: http://minio-service.default.svc.cluster.local:9000
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: http://REPLACE_WITH_EC2_APP_IP:4317
+          value: http://172.31.90.91:4317
         image: python:3.9
 pipelineInfo:
   description: "Pipeline de clustering de logs Loki (TF-IDF + K-Means). Train \u2192\
@@ -1007,7 +1007,7 @@ root:
         isOptional: true
         parameterType: NUMBER_INTEGER
       otel_exporter_otlp_endpoint:
-        defaultValue: http://<IP_EC2_APP>:4317
+        defaultValue: http://172.31.90.91:4317
         isOptional: true
         parameterType: STRING
       random_state:
@@ -1027,7 +1027,7 @@ root:
         isOptional: true
         parameterType: STRING
 schemaVersion: 2.1.0
-sdkVersion: kfp-2.16.1
+sdkVersion: kfp-2.7.0
 ---
 platforms:
   kubernetes:
@@ -1037,6 +1037,3 @@ platforms:
           pvcMount:
           - constant: training-data-pvc
             mountPath: /data
-            pvcNameParameter:
-              runtimeValue:
-                constant: training-data-pvc
