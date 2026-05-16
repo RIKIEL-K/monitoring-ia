@@ -162,10 +162,10 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'kubernetes'\
-          \ && \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'kubernetes<27.0.0'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -224,27 +224,27 @@ deploymentSpec:
           : f\"/spec/template/spec/containers/{idx}/image\",\n                  \"\
           value\": new_image}]\n        apps_v1.patch_namespaced_deployment(\n   \
           \         name=deployment_name,\n            namespace=deployment_namespace,\n\
-          \            body=patch,\n            content_type=\"application/json-patch+json\"\
-          ,\n        )\n        action = \"patch\xE9 (rolling update d\xE9clench\xE9\
-          )\"\n\n    except ApiException as e:\n        if e.status != 404:\n    \
-          \        raise  # Autre erreur (403, 500...) \u2192 on propage\n\n     \
-          \   # \u2500\u2500 CAS 2 : Deployment absent \u2192 cr\xE9ation compl\xE8\
-          te \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
-          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n        print(f\"\
-          \  Deployment '{deployment_name}' introuvable \u2192 cr\xE9ation...\")\n\
-          \        deployment_manifest = client.V1Deployment(\n            api_version=\"\
-          apps/v1\",\n            kind=\"Deployment\",\n            metadata=client.V1ObjectMeta(\n\
-          \                name=deployment_name,\n                namespace=deployment_namespace,\n\
-          \                labels={\"app\": deployment_name, \"managed-by\": \"kubeflow-pipeline\"\
-          },\n            ),\n            spec=client.V1DeploymentSpec(\n        \
-          \        replicas=1,\n                selector=client.V1LabelSelector(\n\
-          \                    match_labels={\"app\": deployment_name}\n         \
-          \       ),\n                template=client.V1PodTemplateSpec(\n       \
-          \             metadata=client.V1ObjectMeta(\n                        labels={\"\
-          app\": deployment_name}\n                    ),\n                    spec=client.V1PodSpec(\n\
-          \                        containers=[\n                            client.V1Container(\n\
-          \                                name=container_name,\n                \
-          \                image=new_image,\n                                ports=[client.V1ContainerPort(container_port=5001)],\n\
+          \            body=patch,\n        )\n        action = \"patch\xE9 (rolling\
+          \ update d\xE9clench\xE9)\"\n\n    except ApiException as e:\n        if\
+          \ e.status != 404:\n            raise  # Autre erreur (403, 500...) \u2192\
+          \ on propage\n\n        # \u2500\u2500 CAS 2 : Deployment absent \u2192\
+          \ cr\xE9ation compl\xE8te \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+          \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+          \u2500\u2500\n        print(f\"  Deployment '{deployment_name}' introuvable\
+          \ \u2192 cr\xE9ation...\")\n        deployment_manifest = client.V1Deployment(\n\
+          \            api_version=\"apps/v1\",\n            kind=\"Deployment\",\n\
+          \            metadata=client.V1ObjectMeta(\n                name=deployment_name,\n\
+          \                namespace=deployment_namespace,\n                labels={\"\
+          app\": deployment_name, \"managed-by\": \"kubeflow-pipeline\"},\n      \
+          \      ),\n            spec=client.V1DeploymentSpec(\n                replicas=1,\n\
+          \                selector=client.V1LabelSelector(\n                    match_labels={\"\
+          app\": deployment_name}\n                ),\n                template=client.V1PodTemplateSpec(\n\
+          \                    metadata=client.V1ObjectMeta(\n                   \
+          \     labels={\"app\": deployment_name}\n                    ),\n      \
+          \              spec=client.V1PodSpec(\n                        containers=[\n\
+          \                            client.V1Container(\n                     \
+          \           name=container_name,\n                                image=new_image,\n\
+          \                                ports=[client.V1ContainerPort(container_port=5001)],\n\
           \                                env=[\n                               \
           \     client.V1EnvVar(\"MLFLOW_TRACKING_URI\",   mlflow_tracking_uri),\n\
           \                                    client.V1EnvVar(\"MLFLOW_S3_ENDPOINT_URL\"\
@@ -286,10 +286,10 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'boto3'\
-          \ && \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'boto3'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -368,11 +368,11 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'scikit-learn'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'mlflow' 'scikit-learn'\
           \ 'pandas' 'boto3' 'numpy' 'opentelemetry-api==1.24.0' 'opentelemetry-sdk==1.24.0'\
-          \ 'opentelemetry-exporter-otlp==1.24.0' && \"$0\" \"$@\"\n"
+          \ 'opentelemetry-exporter-otlp==1.24.0'  &&  python3 -m pip install --quiet\
+          \ --no-warn-script-location 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -489,7 +489,7 @@ deploymentSpec:
           \        from opentelemetry.exporter.otlp.proto.grpc._log_exporter import\
           \ OTLPLogExporter\n\n        endpoint = os.environ.get(\"OTEL_EXPORTER_OTLP_ENDPOINT\"\
           , \"http://localhost:4317\")\n\n        resource = Resource(attributes={\n\
-          \            \"service.name\": \"ml-log-clustering\",\n            \"experiment.name\"\
+          \            \"service.name\": \"dummy-target-app\",\n            \"experiment.name\"\
           : experiment_name\n        })\n\n        tracer_provider = TracerProvider(resource=resource)\n\
           \        trace.set_tracer_provider(tracer_provider)\n        span_processor\
           \ = BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True))\n\
@@ -739,10 +739,10 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'requests' &&\
-          \ \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'requests'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -1027,7 +1027,7 @@ root:
         isOptional: true
         parameterType: STRING
 schemaVersion: 2.1.0
-sdkVersion: kfp-2.7.0
+sdkVersion: kfp-2.16.1
 ---
 platforms:
   kubernetes:
@@ -1037,3 +1037,6 @@ platforms:
           pvcMount:
           - constant: training-data-pvc
             mountPath: /data
+            pvcNameParameter:
+              runtimeValue:
+                constant: training-data-pvc

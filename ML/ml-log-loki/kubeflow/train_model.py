@@ -185,7 +185,7 @@ def train_model(
         endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
         
         resource = Resource(attributes={
-            "service.name": "ml-log-clustering",
+            "service.name": "dummy-target-app",
             "experiment.name": experiment_name
         })
 

@@ -12,7 +12,7 @@ from kfp import dsl
 
 
 @dsl.component(
-    packages_to_install=["kubernetes"],
+    packages_to_install=["kubernetes<27.0.0"],
     base_image="python:3.12-slim",
 )
 def deploy_model(
@@ -93,7 +93,6 @@ CMD ["mlflow", "models", "serve", "-m", "models:/{model_name}/{model_version}", 
             name=deployment_name,
             namespace=deployment_namespace,
             body=patch,
-            content_type="application/json-patch+json",
         )
         action = "patché (rolling update déclenché)"
 
